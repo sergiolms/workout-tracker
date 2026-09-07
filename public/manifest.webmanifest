@@ -1,0 +1,10 @@
+{
+  "name": "Base — Entrena para vivir mejor",
+  "short_name": "Base",
+  "description": "Fuerza, cardio y movilidad sin presión.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f7ef",
+  "theme_color": "#16834f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
