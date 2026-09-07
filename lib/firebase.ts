@@ -1,4 +1,5 @@
 import type { AppState } from './storage';
+import { migrateState } from './storage';
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -95,7 +96,7 @@ export async function loadFromFirebase(): Promise<AppState | null> {
   const snapshot = await getDoc(doc(db, 'users', auth.currentUser.uid, 'appState', 'main'));
   if (!snapshot.exists()) return null;
   const { updatedAt: _updatedAt, ...state } = snapshot.data() as AppState & { updatedAt?: string };
-  return state.version === 1 ? state : null;
+  return migrateState(state);
 }
 
 export async function syncToFirebase(state: AppState): Promise<boolean> {

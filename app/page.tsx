@@ -3,22 +3,24 @@
 import {
   Activity, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound,
   Cloud, CloudOff, Dumbbell, Footprints, HeartPulse, History, Home, Info, LogOut, Moon,
-  MoreHorizontal, Plus, RotateCcw, Save, Sun, Timer, TrendingUp, Wind,
+  MoreHorizontal, Plus, RotateCcw, Save, Search, Sun, Timer, Trash2, TrendingUp, Wind, X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { exerciseImageUrl, searchCatalog, type CatalogExercise } from '@/lib/exercise-catalog';
 import { firebaseConfigured, loadFromFirebase, signInWithGoogle, signOutFirebase, subscribeToAuth, syncToFirebase, type FirebaseUser } from '@/lib/firebase';
-import { mobility, plan, routines, warmup, type RoutineId } from '@/lib/workout-data';
-import { defaultState, loadLocalState, saveLocalState, type AppState, type CardioLog, type ExerciseLog } from '@/lib/storage';
+import { mobility, warmup, type Exercise } from '@/lib/workout-data';
+import { defaultState, loadLocalState, saveLocalState, seedAccount, SEED_SESSION_IDS, type AppState, type CardioLog, type ExerciseLog, type Session } from '@/lib/storage';
 
-type Tab = 'today' | 'plan' | 'progress' | 'mobility' | 'profile';
+type Tab = 'today' | 'plan' | 'sessions' | 'progress' | 'mobility' | 'profile';
 
 const navItems: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'today', label: 'Hoy', icon: Home },
   { id: 'plan', label: 'Plan', icon: CalendarDays },
+  { id: 'sessions', label: 'Sesiones', icon: Dumbbell },
   { id: 'progress', label: 'Progreso', icon: BarChart3 },
   { id: 'mobility', label: 'Movilidad', icon: Footprints },
   { id: 'profile', label: 'Perfil', icon: CircleUserRound },
@@ -56,11 +58,16 @@ function StatusDot({ pain }: { pain: number }) {
   return <span className={`inline-block size-2.5 rounded-full ${pain >= 4 ? 'bg-red-500' : pain >= 2 ? 'bg-amber-400' : 'bg-emerald-500'}`} />;
 }
 
+const FALLBACK_EXERCISE: Exercise = { name: '', target: '', sets: 1, minReps: 0, maxReps: 0, increment: 1, unit: 'kg' };
+
 function TodayView({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
-  const weekPlan = plan[state.week - 1];
-  const [routineId, setRoutineId] = useState<RoutineId>(weekPlan.routines[0]);
+  const weekPlan = state.plan.find((week) => week.week === state.week) ?? state.plan[0];
+  const routineIds = useMemo(() => weekPlan?.routines ?? [], [weekPlan]);
+  const sessionById = useMemo(() => new Map(state.sessions.map((session) => [session.id, session])), [state.sessions]);
+  const [routineId, setRoutineId] = useState<string>(routineIds[0] ?? '');
   const [exerciseIndex, setExerciseIndex] = useState(0);
-  const exercise = routines[routineId][exerciseIndex];
+  const sessionExercises = sessionById.get(routineId)?.exercises ?? [];
+  const exercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
   const lastLog = useMemo(() => state.exerciseLogs.findLast((log) => log.exercise === exercise.name), [exercise.name, state.exerciseLogs]);
   const [load, setLoad] = useState(lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20));
   const [setReps, setSetReps] = useState<number[]>(() => Array(exercise.sets).fill(exercise.maxReps));
@@ -84,11 +91,13 @@ function TodayView({ state, updateState }: { state: AppState; updateState: (upda
   }, [exercise.name, exercise.maxReps, exercise.sets, exercise.unit, state.exerciseLogs]);
 
   useEffect(() => {
-    if (!weekPlan.routines.includes(routineId)) {
-      const timer = window.setTimeout(() => { setRoutineId(weekPlan.routines[0]); setExerciseIndex(0); }, 0);
+    if (routineIds.length && !routineIds.includes(routineId)) {
+      const timer = window.setTimeout(() => { setRoutineId(routineIds[0]); setExerciseIndex(0); }, 0);
       return () => window.clearTimeout(timer);
     }
-  }, [routineId, weekPlan]);
+  }, [routineId, routineIds]);
+
+  if (!weekPlan) return null;
 
   const suggestion: ExerciseLog['suggestion'] = pain >= 4 || rir < 1 || setReps.some((reps) => reps < exercise.minReps)
     ? 'bajar'
@@ -100,7 +109,7 @@ function TodayView({ state, updateState }: { state: AppState; updateState: (upda
     updateState((current) => ({ ...current, exerciseLogs: [...current.exerciseLogs, log] }));
     setSaved(true);
     window.setTimeout(() => {
-      setExerciseIndex((current) => current < routines[routineId].length - 1 ? current + 1 : 0);
+      setExerciseIndex((current) => current < sessionExercises.length - 1 ? current + 1 : 0);
     }, 260);
   };
 
@@ -116,13 +125,13 @@ function TodayView({ state, updateState }: { state: AppState; updateState: (upda
       <section className="summary-card">
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <div className="flex gap-1">{weekPlan.routines.map((id) => <button key={id} className={`rounded-md px-2.5 py-1 text-xs font-bold ${routineId === id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`} onClick={() => { setRoutineId(id); setExerciseIndex(0); }} type="button">{id}</button>)}</div>
+            <div className="flex gap-1">{routineIds.map((id) => <button key={id} className={`rounded-md px-2.5 py-1 text-xs font-bold ${routineId === id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`} onClick={() => { setRoutineId(id); setExerciseIndex(0); }} type="button">{sessionById.get(id)?.name ?? id}</button>)}</div>
             <span className="hidden text-xs font-bold uppercase text-muted-foreground sm:inline">{weekPlan.block}</span>
           </div>
-          <p className="font-semibold">{routines[routineId].length} ejercicios · 45–55 min</p>
+          <p className="font-semibold">{sessionExercises.length} ejercicios · 45–55 min</p>
           <p className="mt-1 text-sm text-muted-foreground">{weekPlan.deload ? 'Descarga: menos series, técnica limpia y esfuerzo cómodo.' : 'Técnica cómoda. Deja las repeticiones previstas en reserva.'}</p>
         </div>
-        <div className="progress-ring">{completedInRoutine}/{routines[routineId].length}</div>
+        <div className="progress-ring">{completedInRoutine}/{sessionExercises.length}</div>
       </section>
 
       <WarmupCard state={state} updateState={updateState} />
@@ -130,7 +139,7 @@ function TodayView({ state, updateState }: { state: AppState; updateState: (upda
       <article className={`exercise-card ${saved ? 'ring-2 ring-emerald-500/40' : ''}`}>
         <div className="border-b border-border p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
-            <div><p className="eyebrow">Ejercicio {exerciseIndex + 1} de {routines[routineId].length}</p><h2 className="text-2xl font-bold tracking-tight">{exercise.name}</h2></div>
+            <div><p className="eyebrow">Ejercicio {exerciseIndex + 1} de {sessionExercises.length}</p><h2 className="text-2xl font-bold tracking-tight">{exercise.name}</h2></div>
             <Button aria-label="Ver historial" className="size-11 rounded-xl" size="icon" variant="secondary"><History /></Button>
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm"><span><strong>Objetivo</strong> {exercise.target}</span><span className="text-muted-foreground">Última carga: {lastLog ? `${lastLog.load} ${exercise.unit}` : 'sin datos'}</span></div>
@@ -192,11 +201,78 @@ function CardioForm({ updateState }: { updateState: (updater: (state: AppState) 
 }
 
 function PlanView({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
-  const blocks = Array.from(new Set(plan.map((week) => week.block)));
+  const blocks = Array.from(new Set(state.plan.map((week) => week.block)));
   return (
     <div><div className="section-heading"><div><p className="eyebrow">24 semanas</p><h1 className="page-title">Tu plan, paso a paso</h1><p className="mt-2 max-w-xl text-sm text-muted-foreground">Dos días al principio. El tercero llega cuando ya hay base. Las descargas están programadas.</p></div></div>
       <div className="mb-6 flex gap-2 overflow-x-auto pb-2">{blocks.map((block) => <span key={block} className="whitespace-nowrap rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold">{block}</span>)}</div>
-      <div className="space-y-3">{plan.map((week) => <button key={week.week} className={`group grid w-full grid-cols-[48px_1fr_auto] items-center gap-3 rounded-2xl border p-3 text-left transition ${state.week === week.week ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40'}`} onClick={() => updateState((current) => ({ ...current, week: week.week, warmupDone: [] }))} type="button"><span className={`grid size-12 place-items-center rounded-xl text-lg font-bold ${state.week === week.week ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{week.week}</span><span><span className="flex items-center gap-2"><strong>{week.block}</strong>{week.deload ? <span className="rounded-md bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">DESCARGA</span> : null}</span><small className="mt-1 block text-muted-foreground">{week.sessions} sesiones · {week.routines.join(' + ')} · {week.cardio}</small></span><ChevronRight className="text-muted-foreground group-hover:text-primary" /></button>)}</div>
+      <div className="space-y-3">{state.plan.map((week) => <button key={week.week} className={`group grid w-full grid-cols-[48px_1fr_auto] items-center gap-3 rounded-2xl border p-3 text-left transition ${state.week === week.week ? 'border-primary bg-primary/5 shadow-sm' : 'border-border bg-card hover:border-primary/40'}`} onClick={() => updateState((current) => ({ ...current, week: week.week, warmupDone: [] }))} type="button"><span className={`grid size-12 place-items-center rounded-xl text-lg font-bold ${state.week === week.week ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{week.week}</span><span><span className="flex items-center gap-2"><strong>{week.block}</strong>{week.deload ? <span className="rounded-md bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">DESCARGA</span> : null}</span><small className="mt-1 block text-muted-foreground">{week.sessions} sesiones · {week.routines.join(' + ')} · {week.cardio}</small></span><ChevronRight className="text-muted-foreground group-hover:text-primary" /></button>)}</div>
+    </div>
+  );
+}
+
+function SessionsView({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
+  const [building, setBuilding] = useState(false);
+
+  const addSession = (session: Session) => {
+    updateState((current) => {
+      const inCurrentWeek = current.plan.map((week) => week.week === current.week ? { ...week, routines: week.routines.includes(session.id) ? week.routines : [...week.routines, session.id] } : week);
+      return { ...current, sessions: [...current.sessions, session], plan: inCurrentWeek };
+    });
+    setBuilding(false);
+  };
+
+  const removeSession = (id: string) => updateState((current) => ({
+    ...current,
+    sessions: current.sessions.filter((session) => session.id !== id),
+    plan: current.plan.map((week) => ({ ...week, routines: week.routines.filter((routine) => routine !== id) })),
+  }));
+
+  if (building) return <SessionBuilder onCancel={() => setBuilding(false)} onSave={addSession} />;
+
+  return (
+    <div><div className="section-heading"><div><p className="eyebrow">{state.sessions.length} sesiones</p><h1 className="page-title">Tus sesiones</h1><p className="mt-2 text-sm text-muted-foreground">Usa las del plan o crea las tuyas con el catálogo de ejercicios.</p></div></div>
+      <Button className="mb-5 h-12 w-full rounded-xl font-bold" onClick={() => setBuilding(true)}><Plus /> Crear sesión</Button>
+      <div className="space-y-3">{state.sessions.map((session) => { const custom = !SEED_SESSION_IDS.has(session.id); return (
+        <div key={session.id} className="grid grid-cols-[48px_1fr_auto] items-center gap-3 rounded-2xl border border-border bg-card p-3">
+          <span className="grid size-12 place-items-center rounded-xl bg-muted text-primary"><Dumbbell className="size-5" /></span>
+          <span className="min-w-0"><strong className="block truncate">{session.name}</strong><small className="text-muted-foreground">{session.exercises.length} ejercicios{custom ? '' : ' · plan base'}</small></span>
+          {custom ? <button aria-label={`Eliminar ${session.name}`} className="grid size-11 place-items-center rounded-xl border border-border text-muted-foreground transition hover:text-red-600 active:scale-95" onClick={() => removeSession(session.id)} type="button"><Trash2 className="size-4.5" /></button> : <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground">Base</span>}
+        </div>
+      ); })}</div>
+    </div>
+  );
+}
+
+function SessionBuilder({ onSave, onCancel }: { onSave: (session: Session) => void; onCancel: () => void }) {
+  const [name, setName] = useState('');
+  const [query, setQuery] = useState('');
+  const [picked, setPicked] = useState<Exercise[]>([]);
+  const results = useMemo(() => searchCatalog(query), [query]);
+  const pickedNames = useMemo(() => new Set(picked.map((item) => item.name)), [picked]);
+
+  const add = (item: CatalogExercise) => setPicked((current) => current.some((exercise) => exercise.name === item.name) ? current : [...current, { name: item.name, target: `${item.bodyPart} · ${item.equipment}`, sets: 3, minReps: 8, maxReps: 12, increment: 2.5, unit: 'kg' }]);
+  const remove = (exerciseName: string) => setPicked((current) => current.filter((exercise) => exercise.name !== exerciseName));
+  const save = () => { const trimmed = name.trim(); if (!trimmed || picked.length === 0) return; onSave({ id: uid(), name: trimmed, exercises: picked }); };
+
+  return (
+    <div>
+      <div className="mb-5 flex items-center gap-3"><Button aria-label="Cancelar" className="size-11 rounded-xl" onClick={onCancel} size="icon" variant="outline"><X /></Button><div><p className="eyebrow">Nueva sesión</p><h1 className="page-title">Crear sesión</h1></div></div>
+      <input aria-label="Nombre de la sesión" className="mb-4 h-12 w-full rounded-xl border border-border bg-background px-4 text-base font-medium outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setName(event.target.value)} placeholder="Nombre (p. ej. Empuje A)" value={name} />
+
+      {picked.length ? <div className="mb-4 space-y-2">{picked.map((exercise) => (
+        <div key={exercise.name} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5"><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{exercise.name}</strong><small className="text-muted-foreground">3×8–12 · RIR 2–3</small></span><button aria-label={`Quitar ${exercise.name}`} className="grid size-9 place-items-center rounded-lg text-muted-foreground hover:text-red-600" onClick={() => remove(exercise.name)} type="button"><X className="size-4" /></button></div>
+      ))}</div> : null}
+
+      <div className="mb-3 flex items-center gap-2 rounded-xl border border-border bg-background px-3"><Search className="size-4 text-muted-foreground" /><input aria-label="Buscar ejercicios" className="h-11 flex-1 bg-transparent text-sm outline-none" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar ejercicio, músculo o material…" value={query} /></div>
+      <div className="space-y-2">{results.map((item) => { const added = pickedNames.has(item.name); return (
+        <button key={item.id} className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition ${added ? 'border-emerald-500/50 bg-emerald-500/7' : 'border-border bg-card hover:border-primary/40'}`} onClick={() => add(item)} type="button">
+          <img alt="" className="size-12 shrink-0 rounded-lg bg-muted object-cover" loading="lazy" src={exerciseImageUrl(item.image)} />
+          <span className="min-w-0 flex-1"><strong className="block truncate text-sm capitalize">{item.name}</strong><small className="text-muted-foreground capitalize">{item.target} · {item.equipment}</small></span>
+          {added ? <Check className="size-5 text-emerald-600" /> : <Plus className="size-5 text-muted-foreground" />}
+        </button>
+      ); })}</div>
+
+      <div className="sticky bottom-24 mt-5"><Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" disabled={!name.trim() || picked.length === 0} onClick={save}><Save /> Guardar sesión ({picked.length})</Button></div>
     </div>
   );
 }
@@ -247,7 +323,7 @@ function ProfileView({ state, updateState, user, authBusy, authError, onGoogleLo
 }
 
 export default function HomePage() {
-  const [state, setState] = useState<AppState>(defaultState);
+  const [state, setState] = useState<AppState>(() => seedAccount(defaultState));
   const [tab, setTab] = useState<Tab>('today');
   const [hydrated, setHydrated] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -263,7 +339,7 @@ export default function HomePage() {
     const initialize = async () => {
       try {
         const saved = await loadLocalState();
-        if (!cancelled && saved) setState(saved);
+        if (!cancelled && saved) setState(seedAccount(saved));
       } finally {
         if (!cancelled) setHydrated(true);
       }
@@ -272,7 +348,7 @@ export default function HomePage() {
         setFirebaseUser(user);
         if (user) {
           const remote = await loadFromFirebase().catch(() => null);
-          if (!cancelled && remote) setState(remote);
+          if (!cancelled && remote) setState(seedAccount(remote));
         }
       });
     };
@@ -293,7 +369,7 @@ export default function HomePage() {
   const handleGoogleLogin = async () => { setAuthBusy(true); setAuthError(''); try { await signInWithGoogle(); } catch (error) { const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''; setAuthError(code.includes('popup-closed') ? 'Se cerró la ventana antes de completar el acceso.' : code.includes('unauthorized-domain') ? 'Añade este dominio a los dominios autorizados de Firebase.' : 'No se pudo iniciar sesión. Inténtalo de nuevo.'); } finally { setAuthBusy(false); } };
   const handleLogout = async () => { setAuthBusy(true); setAuthError(''); try { await signOutFirebase(); } catch { setAuthError('No se pudo cerrar la sesión.'); } finally { setAuthBusy(false); } };
 
-  const content = tab === 'today' ? <TodayView state={state} updateState={updateState} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} /> : tab === 'progress' ? <ProgressView state={state} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView authBusy={authBusy} authError={authError} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
+  const content = tab === 'today' ? <TodayView state={state} updateState={updateState} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} /> : tab === 'sessions' ? <SessionsView state={state} updateState={updateState} /> : tab === 'progress' ? <ProgressView state={state} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView authBusy={authBusy} authError={authError} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
 
   return (
     <div className={state.theme === 'dark' ? 'dark' : ''}>
@@ -305,7 +381,7 @@ export default function HomePage() {
           </header>
           <div className="mx-auto max-w-[760px]">{content}</div>
         </div>
-        <nav aria-label="Navegación principal" className="bottom-nav"><div className="mx-auto grid max-w-[620px] grid-cols-5">{navItems.map(({ id, label, icon: Icon }) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={`nav-button ${tab === id ? 'text-primary' : 'text-muted-foreground'}`} onClick={() => setTab(id)} type="button"><Icon className="size-5" strokeWidth={tab === id ? 2.7 : 2} />{label}</button>)}</div></nav>
+        <nav aria-label="Navegación principal" className="bottom-nav"><div className="mx-auto grid max-w-[620px] grid-cols-6">{navItems.map(({ id, label, icon: Icon }) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={`nav-button ${tab === id ? 'text-primary' : 'text-muted-foreground'}`} onClick={() => setTab(id)} type="button"><Icon className="size-5" strokeWidth={tab === id ? 2.7 : 2} />{label}</button>)}</div></nav>
       </main>
     </div>
   );
