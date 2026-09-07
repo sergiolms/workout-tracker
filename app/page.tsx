@@ -2,7 +2,7 @@
 
 import {
   Activity, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound,
-  Cloud, CloudOff, Dumbbell, Footprints, HeartPulse, History, Home, Info, Moon,
+  Cloud, CloudOff, Dumbbell, Footprints, HeartPulse, History, Home, Info, LogOut, Moon,
   MoreHorizontal, Plus, RotateCcw, Save, Sun, Timer, TrendingUp, Wind,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
-import { firebaseConfigured, syncToFirebase } from '@/lib/firebase';
+import { firebaseConfigured, loadFromFirebase, signInWithGoogle, signOutFirebase, subscribeToAuth, syncToFirebase, type FirebaseUser } from '@/lib/firebase';
 import { mobility, plan, routines, warmup, type RoutineId } from '@/lib/workout-data';
 import { defaultState, loadLocalState, saveLocalState, type AppState, type CardioLog, type ExerciseLog } from '@/lib/storage';
 
@@ -231,14 +231,17 @@ function MobilityView({ state, updateState }: { state: AppState; updateState: (u
   );
 }
 
-function ProfileView({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
+function ProfileView({ state, updateState, user, authBusy, authError, onGoogleLogin, onLogout }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void; user: FirebaseUser | null; authBusy: boolean; authError: string; onGoogleLogin: () => void; onLogout: () => void }) {
   const [weight, setWeight] = useState(state.measurements.at(-1)?.weight ?? 80); const [waist, setWaist] = useState(state.measurements.at(-1)?.waist ?? 90); const [restingHr, setRestingHr] = useState(state.measurements.at(-1)?.restingHr ?? 65); const [sleep, setSleep] = useState(3); const [energy, setEnergy] = useState(3); const [pain, setPain] = useState(0); const [saved, setSaved] = useState(false);
   const save = () => { updateState((current) => ({ ...current, measurements: [...current.measurements, { id: uid(), date: new Date().toISOString(), weight, waist, restingHr, sleep, energy, pain }] })); setSaved(true); };
   return (
     <div><div className="section-heading"><div><p className="eyebrow">Todo es opcional</p><h1 className="page-title">Tu estado</h1><p className="mt-2 text-sm text-muted-foreground">Registra solo lo que te resulte útil.</p></div></div>
       <section className="rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Chequeo rápido</h2><div className="mt-4 grid grid-cols-2 gap-3"><div><span className="control-label">Peso kg</span><Stepper value={weight} onChange={setWeight} step={0.5} /></div><div><span className="control-label">Cintura cm</span><Stepper value={waist} onChange={setWaist} /></div><div><span className="control-label">FC reposo</span><Stepper value={restingHr} onChange={setRestingHr} /></div><Segmented label="Sueño 1–5" value={sleep} values={[1,2,3,4,5]} onChange={setSleep} /><Segmented label="Energía 1–5" value={energy} values={[1,2,3,4,5]} onChange={setEnergy} /><Segmented label="Dolor general" value={pain} values={[0,1,2,3,4]} onChange={setPain} pain /></div><Button className="mt-5 h-12 w-full rounded-xl font-bold" onClick={save}>{saved ? <><Check /> Guardado</> : 'Guardar chequeo'}</Button></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Clases opcionales</h2><p className="mt-1 text-sm text-muted-foreground">Suma una si te deja mejor, no agotado.</p><div className="mt-3 divide-y divide-border">{['Pilates', 'Spinning', 'Body Pump', 'Total Training'].map((item) => <label key={item} className="flex min-h-13 items-center justify-between"><span className="text-sm font-medium">{item}</span><Switch checked={state.classes.includes(item)} onCheckedChange={(checked) => updateState((current) => ({ ...current, classes: checked ? [...current.classes, item] : current.classes.filter((value) => value !== item) }))} /></label>)}</div></section>
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="icon-tile">{firebaseConfigured ? <Cloud /> : <CloudOff />}</span><div><strong className="block">Sincronización</strong><small className="text-muted-foreground">{firebaseConfigured ? 'Firebase preparado y activo' : 'Local; añade las variables de Firebase'}</small></div></div><span className={`size-2.5 rounded-full ${firebaseConfigured ? 'bg-emerald-500' : 'bg-amber-400'}`} /></div></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5">
+        {user ? <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">{(user.displayName || user.email || 'U').slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><strong className="block truncate">{user.displayName || 'Cuenta de Google'}</strong><small className="block truncate text-muted-foreground">{user.email}</small></div><Button aria-label="Cerrar sesión" className="size-11 rounded-xl" disabled={authBusy} onClick={onLogout} size="icon" variant="outline"><LogOut /></Button></div> : <div><div className="mb-4 flex gap-3"><span className="icon-tile"><Cloud /></span><div><strong className="block">Guarda tu progreso</strong><small className="text-muted-foreground">Inicia sesión para sincronizar entre dispositivos.</small></div></div><Button className="h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50" disabled={authBusy || !firebaseConfigured} onClick={onGoogleLogin}><span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">G</span>{authBusy ? 'Conectando…' : 'Continuar con Google'}</Button>{authError ? <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{authError}</p> : null}</div>}
+      </section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="icon-tile">{user ? <Cloud /> : <CloudOff />}</span><div><strong className="block">Sincronización</strong><small className="text-muted-foreground">{user ? 'Firebase conectado a tu cuenta' : firebaseConfigured ? 'Solo en este dispositivo hasta iniciar sesión' : 'Local; añade las variables de Firebase'}</small></div></div><span className={`size-2.5 rounded-full ${user ? 'bg-emerald-500' : 'bg-amber-400'}`} /></div></section>
     </div>
   );
 }
@@ -248,11 +251,36 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('today');
   const [hydrated, setHydrated] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   const updateState = useCallback((updater: (state: AppState) => AppState) => setState((current) => updater(current)), []);
 
-  useEffect(() => { loadLocalState().then((saved) => { if (saved) setState(saved); setHydrated(true); }).catch(() => setHydrated(true)); if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => undefined); }, []);
-  useEffect(() => { if (!hydrated) return; const timer = window.setTimeout(async () => { setSyncing(true); await saveLocalState(state); await syncToFirebase(state); setSyncing(false); }, 350); return () => window.clearTimeout(timer); }, [hydrated, state]);
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+    const initialize = async () => {
+      try {
+        const saved = await loadLocalState();
+        if (!cancelled && saved) setState(saved);
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+      unsubscribe = await subscribeToAuth(async (user) => {
+        if (cancelled) return;
+        setFirebaseUser(user);
+        if (user) {
+          const remote = await loadFromFirebase().catch(() => null);
+          if (!cancelled && remote) setState(remote);
+        }
+      });
+    };
+    void initialize();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    return () => { cancelled = true; unsubscribe?.(); };
+  }, []);
+  useEffect(() => { if (!hydrated) return; const timer = window.setTimeout(async () => { setSyncing(true); await saveLocalState(state); if (firebaseUser) await syncToFirebase(state); setSyncing(false); }, 350); return () => window.clearTimeout(timer); }, [firebaseUser, hydrated, state]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: unknown, options?: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
@@ -262,7 +290,10 @@ export default function HomePage() {
     return () => lifecycle.abort();
   }, []);
 
-  const content = tab === 'today' ? <TodayView state={state} updateState={updateState} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} /> : tab === 'progress' ? <ProgressView state={state} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView state={state} updateState={updateState} />;
+  const handleGoogleLogin = async () => { setAuthBusy(true); setAuthError(''); try { await signInWithGoogle(); } catch (error) { const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : ''; setAuthError(code.includes('popup-closed') ? 'Se cerró la ventana antes de completar el acceso.' : code.includes('unauthorized-domain') ? 'Añade este dominio a los dominios autorizados de Firebase.' : 'No se pudo iniciar sesión. Inténtalo de nuevo.'); } finally { setAuthBusy(false); } };
+  const handleLogout = async () => { setAuthBusy(true); setAuthError(''); try { await signOutFirebase(); } catch { setAuthError('No se pudo cerrar la sesión.'); } finally { setAuthBusy(false); } };
+
+  const content = tab === 'today' ? <TodayView state={state} updateState={updateState} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} /> : tab === 'progress' ? <ProgressView state={state} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView authBusy={authBusy} authError={authError} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
 
   return (
     <div className={state.theme === 'dark' ? 'dark' : ''}>
@@ -270,7 +301,7 @@ export default function HomePage() {
         <div className="mx-auto min-h-dvh max-w-[1180px] px-4 pb-28 pt-5 sm:px-7 lg:pb-28">
           <header className="mb-7 flex items-center justify-between">
             <button className="flex items-center gap-3 text-left" onClick={() => setTab('today')} type="button"><span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"><HeartPulse className="size-5" strokeWidth={2.4} /></span><span><span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Base</span><span className="block text-sm font-semibold">Tu vuelta, a tu ritmo</span></span></button>
-            <div className="flex items-center gap-2"><span aria-label={syncing ? 'Guardando' : 'Guardado'} className="hidden items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:flex">{syncing ? <Activity className="size-4 animate-pulse" /> : firebaseConfigured ? <Cloud className="size-4" /> : <Save className="size-4" />}{syncing ? 'Guardando' : 'Guardado'}</span><Button aria-label={state.theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} className="size-11 rounded-xl border-border bg-card text-foreground shadow-sm hover:bg-muted" onClick={() => updateState((current) => ({ ...current, theme: current.theme === 'dark' ? 'light' : 'dark' }))} size="icon" variant="outline">{state.theme === 'dark' ? <Sun /> : <Moon />}</Button></div>
+            <div className="flex items-center gap-2"><span aria-label={syncing ? 'Guardando' : 'Guardado'} className="hidden items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:flex">{syncing ? <Activity className="size-4 animate-pulse" /> : firebaseUser ? <Cloud className="size-4" /> : <Save className="size-4" />}{syncing ? 'Guardando' : firebaseUser ? 'Sincronizado' : 'Guardado local'}</span><Button aria-label={state.theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro'} className="size-11 rounded-xl border-border bg-card text-foreground shadow-sm hover:bg-muted" onClick={() => updateState((current) => ({ ...current, theme: current.theme === 'dark' ? 'light' : 'dark' }))} size="icon" variant="outline">{state.theme === 'dark' ? <Sun /> : <Moon />}</Button></div>
           </header>
           <div className="mx-auto max-w-[760px]">{content}</div>
         </div>
