@@ -198,11 +198,11 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary);
   }
 
   .bottom-nav {
-    @apply fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:left-1/2 lg:bottom-5 lg:max-w-[620px] lg:-translate-x-1/2 lg:rounded-2xl lg:border lg:px-4 lg:shadow-xl;
+    @apply shrink-0 border-t border-border bg-card px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 sm:px-4;
   }
 
   .nav-button {
-    @apply flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] font-semibold transition active:scale-95;
+    @apply flex min-h-14 flex-col items-center justify-center gap-1 text-[10px] font-semibold transition;
   }
 }
 
@@ -223,11 +223,215 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary);
   }
 }
 
+/* A visible touch response remains available even without device vibration. */
+:where(button, [role="button"], [role="checkbox"], summary, input[type="checkbox"])[data-feedback-pressed="true"] {
+  filter: brightness(0.92);
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  button, [role="button"], summary {
-    transition: scale 120ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out;
+  :where(button, [role="button"], [role="checkbox"], summary, input[type="checkbox"]) {
+    transition: scale 80ms ease-out, filter 80ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out;
   }
+  :where(button, [role="button"], [role="checkbox"], summary, input[type="checkbox"])[data-feedback-pressed="true"],
   button:active:not(:disabled), [role="button"]:active:not([aria-disabled="true"]), summary:active {
-    scale: 0.96;
+    scale: 0.98;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, [role="button"], [role="checkbox"], summary, input[type="checkbox"]) {
+    scale: 1 !important;
+  }
+}
+
+/* Spatial feedback uses short, one-shot movement rather than looping effects. */
+.animated-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 260ms cubic-bezier(.2,.8,.2,1), opacity 180ms ease;
+}
+.animated-disclosure[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.animated-checkbox .checkbox-tick {
+  opacity: 0;
+  scale: .65;
+  transition: opacity 140ms ease, scale 260ms cubic-bezier(.2,1.5,.4,1);
+}
+.animated-checkbox[data-checked] .checkbox-tick,
+.animated-checkbox[data-indeterminate] .checkbox-tick {
+  opacity: 1;
+  scale: 1;
+}
+.animated-checkbox .checkbox-tick svg path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  transition: stroke-dashoffset 260ms ease;
+}
+.animated-checkbox[data-checked] .checkbox-tick svg path,
+.animated-checkbox[data-indeterminate] .checkbox-tick svg path {
+  stroke-dashoffset: 0;
+}
+.animated-checkbox::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--primary);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.completion-row {
+  transition: background-color 220ms ease;
+}
+.completion-row[data-complete="true"] {
+  background-color: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+.progress-ring-value {
+  transition: stroke-dashoffset 650ms cubic-bezier(.2,.8,.2,1);
+}
+/* One shared shape flows between destinations; individual tabs never pulse. */
+.liquid-nav {
+  --nav-pill-width: min(56px, calc(100% / var(--nav-count) - 12px));
+  position: relative;
+  display: grid;
+  isolation: isolate;
+}
+.liquid-nav-indicator {
+  position: absolute;
+  z-index: -1;
+  top: 2px;
+  height: 32px;
+  width: var(--nav-pill-width);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  pointer-events: none;
+  transition: opacity 160ms ease;
+}
+.liquid-nav .nav-button,
+button[aria-expanded], summary, button[aria-pressed], [role="checkbox"] {
+  scale: 1;
+}
+.liquid-nav .nav-button { filter: none; }
+.liquid-nav .nav-button > svg {
+  transition: translate 150ms ease, opacity 150ms ease, color 180ms ease;
+}
+.liquid-nav .nav-button[data-feedback-pressed="true"] > svg {
+  translate: 0 1px;
+  opacity: .7;
+}
+button[aria-expanded][data-feedback-pressed="true"],
+summary[data-feedback-pressed="true"] {
+  filter: brightness(.97);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animated-checkbox[data-checked]::before { animation: checkbox-ripple 420ms ease-out; }
+  .activity-bar { transform-origin: bottom; animation: bar-enter 450ms cubic-bezier(.2,.8,.2,1); }
+  .motion-notice { animation: notice-enter 300ms ease-out; }
+  details[open] > :not(summary) { animation: notice-enter 220ms ease-out; }
+}
+@keyframes checkbox-ripple {
+  from { scale: .8; opacity: .4; }
+  to { scale: 1.4; opacity: 0; }
+}
+@keyframes bar-enter { from { scale: 1 0; } to { scale: 1 1; } }
+@keyframes notice-enter { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-nav .nav-button > svg { translate: none !important; }
+}
+
+/* Only the content scrolls. Navigation occupies its own full-width bottom row. */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+.app-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+
+.segmented-control {
+  position: relative;
+  display: grid;
+  gap: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--muted);
+  isolation: isolate;
+}
+.segmented-selection {
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  width: calc((100% - 8px) / var(--segments));
+  left: calc(4px + var(--selected-segment) * (100% - 8px) / var(--segments));
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: 0 1px 4px rgb(0 0 0 / .1);
+  transition: left 230ms cubic-bezier(.2,.8,.2,1), opacity 150ms ease;
+}
+.segmented-option {
+  position: relative;
+  display: grid;
+  min-height: 44px;
+  min-width: 0;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 700;
+}
+.segmented-option[data-checked] { color: var(--primary); }
+.segmented-control[data-disabled] { opacity: .5; }
+.pain-value { color: var(--pain-color); background: color-mix(in srgb, var(--pain-color) 9%, transparent); }
+.pain-fill { background: var(--pain-color); transition: background-color 200ms ease; }
+.pain-thumb { border-color: var(--pain-color); transition: border-color 200ms ease, box-shadow 150ms ease; }
+[data-slot="switch"], .segmented-option { scale: 1; }
+[data-slot="switch-thumb"] { transition: translate 230ms cubic-bezier(.2,.8,.2,1), scale 150ms ease; }
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot="switch"][data-feedback-pressed="true"] [data-slot="switch-thumb"] { scale: 1.1 .9; }
+}
+
+/* Quiet training feedback: stable layout, no full-screen interruptions. */
+.ghost-performance { display: inline-block; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.ghost-up { color: #15803d; }
+.ghost-down { color: #b45309; }
+.dark .ghost-up { color: #86efac; }
+.dark .ghost-down { color: #fcd34d; }
+.undo-notice, .rest-countdown { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 6px 24px #00000012; }
+.save-status { display: flex; align-items: center; gap: 5px; max-width: 150px; font-size: 10px; }
+.save-status svg { height: 15px; width: 15px; flex-shrink: 0; }
+.exercise-sheet { top: auto; bottom: 0; left: 50%; translate: -50% 0; transform: none; max-width: 680px; max-height: min(80dvh, 680px); padding: 16px 16px max(16px,env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; overflow-y: auto; overscroll-behavior: contain; gap: 12px; }
+@media (max-width: 420px) { .save-status { max-width: 92px; line-height: 1.25; } }
+@keyframes exercise-sheet-in { from { translate: -50% 24px; opacity: 0; } to { translate: -50% 0; opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) { .exercise-sheet[data-open] { animation: exercise-sheet-in 220ms cubic-bezier(.2,.8,.2,1); } }
+
+.undo-notice { position: fixed; z-index: 40; right: 16px; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); width: min(380px, calc(100% - 32px)); }
+@keyframes training-toast-in { from { opacity: 0; translate: 16px 0; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: no-preference) { .undo-notice { animation: training-toast-in 180ms ease-out; } }
+
+.rest-dock { display: grid; grid-template-rows: 1fr; flex-shrink: 0; width: 100%; max-width: 760px; align-self: center; }
+.rest-dock-inner { min-height: 0; overflow: hidden; }
+.rest-dock-spacing { padding: 0 12px 8px; }
+@keyframes rest-dock-in { from { grid-template-rows: 0fr; opacity: 0; translate: 0 12px; } to { grid-template-rows: 1fr; opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: no-preference) { .rest-dock { animation: rest-dock-in 300ms cubic-bezier(.2,.8,.2,1); } }
+[data-rest-active="true"] .undo-notice { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
+.undo-notice { overflow: hidden; }
+.undo-progress { position: absolute; inset: 0; background: color-mix(in srgb, var(--primary) 10%, transparent); transform-origin: left; animation: undo-lifetime 5s linear forwards; pointer-events: none; }
+@keyframes undo-lifetime { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes training-toast-out { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 16px 0; } }
+.undo-notice[data-closing="true"] { animation: training-toast-out 180ms ease-in forwards; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .undo-notice[data-closing="true"] { animation: none; opacity: 0; } .undo-progress { animation: none; transform: scaleX(1); } }

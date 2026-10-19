@@ -29,6 +29,8 @@ export type AppState = {
   classes: string[];
   theme: ThemePreference;
   haptics?: boolean;
+  restEnabled?: boolean;
+  restSeconds?: number;
 };
 
 export const defaultState: AppState = { version: 3, week: 1, planName: '', periods: [], sessions: [], plan: [], exerciseLogs: [], workoutLogs: [], cardioLogs: [], measurements: [], mobilityDone: [], warmupDone: [], classes: [], theme: 'system' };

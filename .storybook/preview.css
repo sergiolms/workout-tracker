@@ -1,0 +1,5 @@
+:root {
+  --font-geist-sans: Arial, Helvetica, sans-serif;
+  --font-geist-mono: ui-monospace, monospace;
+}
+.story-canvas { min-width: 0; }

@@ -1,6 +1,6 @@
 {
   "name": "sites-project",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -11,7 +11,10 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint app lib public",
     "format": "oxfmt",
-    "test": "node --test lib/*.test.mjs"
+    "test": "node --test lib/*.test.mjs",
+    "storybook": "storybook dev -p 6006 --host 127.0.0.1 --no-open --disable-telemetry",
+    "build-storybook": "storybook build --disable-telemetry",
+    "typecheck": "tsc --project tsconfig.app.json --pretty false --incremental false"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -39,6 +42,8 @@
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@openai/sites-vite-plugin": "0.2.0",
+    "@storybook/addon-docs": "10.6.2",
+    "@storybook/react-vite": "10.6.2",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -49,6 +54,7 @@
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
+    "storybook": "10.6.2",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.0.13",

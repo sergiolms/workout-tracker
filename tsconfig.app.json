@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["app/**/*.tsx", "components/**/*.tsx", "hooks/**/*.ts", "lib/**/*.ts", "stories/**/*.tsx", ".storybook/**/*.ts", ".storybook/**/*.tsx"],
+  "exclude": ["node_modules", "la-siesta-works", "storybook-static", "dist"]
+}

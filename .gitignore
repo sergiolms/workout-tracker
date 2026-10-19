@@ -43,3 +43,6 @@ next-env.d.ts
 /outputs/
 /work/
 *.tsbuildinfo
+
+# component catalog build
+/storybook-static/

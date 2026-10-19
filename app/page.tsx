@@ -3,9 +3,9 @@
 import {
   Activity, BarChart3, CalendarDays, Check, ChevronLeft, ChevronRight, CircleUserRound,
   Cloud, CloudOff, Download, Dumbbell, Footprints, HeartPulse, Home, Info, LogOut, Moon, Monitor,
-  Maximize2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Save, Search, Sun, Timer, Trash2, TrendingUp, Wind, X,
+  Maximize2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Save, Search, Sun, Timer, Trash2, Wind, X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useId, useSyncExternalStore } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { MeasurementTracker } from '@/components/measurement-tracker';
@@ -22,9 +22,21 @@ import { BASE_SESSION_IDS, backupLocalState, clearAppLocalData, defaultState, lo
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { appRelease } from '@/lib/app-version';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
+import { previousExerciseLog, undoSkippedExercise } from '@/lib/workout-experience';
+import { ExercisePickerSheet, WorkoutReview } from '@/components/training-dialogs';
+import { GhostPerformance, RestDock, SaveStatus, UndoNotice } from '@/components/workout-feedback';
 import { exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
+import { RirSelector, SegmentedControl } from '@/components/segmented-control';
+import { PainSlider } from '@/components/pain-slider';
+import { RestSettings } from '@/components/rest-settings';
+import { restPreferences } from '@/lib/rest-preferences';
+import { PreferenceSwitch } from '@/components/preference-switch';
+import { LiquidNavigation } from '@/components/liquid-navigation';
+import { MotionSurface, AnimatedDisclosure } from '@/components/motion-surface';
+import { ProgressRing } from '@/components/progress-ring';
 import { HapticCheck } from '@/components/haptic-check';
 import { Stepper } from '@/components/number-stepper';
+import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { useInteractionFeedback } from '@/hooks/use-interaction-feedback';
 
 type Tab = 'today' | 'plan' | 'timers' | 'progress' | 'mobility' | 'profile';
@@ -42,19 +54,10 @@ const localDateKey = () => { const date = new Date(); return `${date.getFullYear
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 
-function Segmented({ value, values, onChange, label, pain = false }: { value: number; values: number[]; onChange: (value: number) => void; label: string; pain?: boolean }) {
-  return (
-    <fieldset>
-      <legend className="mb-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">{label}</legend>
-      <div className="grid grid-flow-col gap-1.5">
-        {values.map((item) => {
-          const active = item === value;
-          const painClass = pain && active ? (item >= 4 ? 'bg-red-500 text-white border-red-500' : item >= 2 ? 'bg-amber-400 text-amber-950 border-amber-400' : 'bg-emerald-500 text-white border-emerald-500') : '';
-          return <button key={item} aria-pressed={active} className={`min-h-11 rounded-lg border text-sm font-bold transition active:scale-95 ${active ? painClass || 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground'}`} onClick={() => onChange(item)} type="button">{item}{pain && item === 4 ? '+' : ''}</button>;
-        })}
-      </div>
-    </fieldset>
-  );
+function markSessionStarted(key: string) { try { if (!localStorage.getItem(key)) localStorage.setItem(key, String(Date.now())); } catch { /* Optional elapsed-time hint. */ } }
+
+function Segmented({ value, values, onChange, label }: { value: number; values: number[]; onChange: (value: number) => void; label: string }) {
+  return <SegmentedControl label={label} value={value} onChange={onChange} options={values.map((number) => ({ value: number, label: String(number) }))} />;
 }
 
 function StatusDot({ pain }: { pain: number }) {
@@ -81,7 +84,14 @@ function useExerciseDraft(key: string, initial: ExerciseDraft) {
     setEntry({ key, value: updated });
     try { localStorage.setItem(key, JSON.stringify(updated)); } catch { /* In-memory draft remains usable. */ }
   }
-  return { value, change };
+  function restoreCompleted(completed: boolean[]) {
+    let latest = value;
+    try { latest = JSON.parse(localStorage.getItem(key) ?? 'null') ?? value; } catch { /* Use current draft. */ }
+    const updated = { ...latest, completed };
+    setEntry({ key, value: updated });
+    try { localStorage.setItem(key, JSON.stringify(updated)); } catch { /* Keep in-memory draft. */ }
+  }
+  return { value, change, restoreCompleted };
 }
 
 function ExerciseImage({ image, name }: { image?: string; name: string }) {
@@ -207,7 +217,7 @@ function WorkoutTimer() {
   );
 }
 
-function TodayView({ editable, state, updateState, onOpenSessions, preferredRoutine, onFinish, notice }: { editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
+function TodayView({ editable, state, updateState, onOpenSessions, preferredRoutine, onFinish, notice, onStartRest, onStopRest, onOfferUndo, onClearUndo }: { onClearUndo: () => void; onStartRest: () => void; onStopRest: () => void; onOfferUndo: (message: string, action: () => void) => void; editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
   const weekPlan = state.plan.find((week) => week.week === state.week) ?? state.plan[0];
   const sessionById = useMemo(() => new Map(state.sessions.map((session) => [session.id, session])), [state.sessions]);
   const routineIds = useMemo(() => (weekPlan?.routines ?? []).filter((id) => sessionById.has(id)), [sessionById, weekPlan]);
@@ -215,14 +225,14 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const sessionExercises = sessionById.get(routineId)?.exercises ?? [];
   const exercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
-  const lastLog = state.exerciseLogs.findLast((log) => log.exercise === exercise.name);
   const day = localDateKey();
   const workoutId = `${day}:${state.week}:${routineId}`;
+  const lastLog = previousExerciseLog(state.exerciseLogs, exercise.name, workoutId);
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
   const routineLogs = state.exerciseLogs.filter((log) => log.workoutId === workoutId || (!log.workoutId && log.week === state.week && log.routine === routineId && new Date(log.date).toLocaleDateString('en-CA') === day));
   const draftKey = `base-draft:${day}:${state.week}:${routineId}:${exercise.name}`;
   const initialDraft = { load: lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20), reps: Array(exercise.sets).fill(exercise.maxReps), completed: Array(exercise.sets).fill(false), rir: 2, pain: 0, note: '' };
-  const { value: draft, change } = useExerciseDraft(draftKey, initialDraft);
+  const { value: draft, change, restoreCompleted } = useExerciseDraft(draftKey, initialDraft);
   const { load, reps: setReps, completed, rir, pain, note } = draft;
   const setLoad = (value: number) => change('load', value);
   const setSetReps = (value: (old: number[]) => number[]) => change('reps', value);
@@ -235,9 +245,24 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const [showNotes, setShowNotes] = useState(false);
   const [showCardio, setShowCardio] = useState(false);
   const [showExercises, setShowExercises] = useState(false);
-  const exercisePicker = useRef<HTMLButtonElement>(null);
   const [saved, setSaved] = useState(false);
   const [confirmUnmarked, setConfirmUnmarked] = useState(false);
+  const [finishReview, setFinishReview] = useState(false);
+  const rest = restPreferences(state);
+  const sessionStartKey = `base-session-start:${workoutId}`;
+
+  const [reviewMinutes, setReviewMinutes] = useState<number | null>(null);
+  const exerciseCard = useRef<HTMLElement>(null);
+  const toggleSets = (next: boolean[], rest: boolean) => {
+    const before = [...completed];
+    const index = exerciseIndex;
+    markSessionStarted(sessionStartKey);
+    setCompleted(() => next);
+    if (rest && state.restEnabled !== false) onStartRest();
+    else if (!rest) onStopRest();
+    onOfferUndo(next.some((done, i) => done && !completed[i]) ? 'Serie marcada' : 'Series actualizadas', () => { restoreCompleted(before); setExerciseIndex(index); onStopRest(); });
+  };
+  const jumpToExercise = (index: number) => { setExerciseIndex(index); setSaved(false); setShowExercises(false); setFinishReview(false); window.setTimeout(() => exerciseCard.current?.scrollIntoView({ block: 'start', behavior: 'instant' }), 0); };
 
   useEffect(() => {
     if (routineIds.length && !routineIds.includes(routineId)) {
@@ -253,6 +278,8 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
 
   const commitExercise = (done: boolean[]) => {
     if (!editable) return;
+    onClearUndo();
+    markSessionStarted(sessionStartKey);
     const sets = setReps.map((reps, index) => ({ reps, done: Boolean(done[index]) }));
     const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets, rir, pain, note, skipped: false, suggestion: exerciseSuggestion(exercise, { sets, rir, pain }) };
     updateState((current) => saveExerciseLog(current, log));
@@ -270,141 +297,146 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   };
 
   const skipExercise = () => {
+    if (!editable) return;
+    markSessionStarted(sessionStartKey);
+    const previous = routineLogs.find(item => item.exercise === exercise.name);
+    const previousWorkouts = state.workoutLogs;
+    const index = exerciseIndex;
     const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: setReps.map((reps) => ({ reps, done: false })), rir, pain, note, skipped: true, suggestion: 'mantener' };
     updateState((current) => saveExerciseLog(current, log));
+    onStopRest();
+    onOfferUndo('Ejercicio omitido', () => { updateState(current => undoSkippedExercise(current, log, previous, previousWorkouts)); setExerciseIndex(index); setSaved(false); });
     setExerciseIndex((current) => Math.min(current + 1, sessionExercises.length - 1));
     setSaved(true);
     window.setTimeout(() => setSaved(false), 500);
   };
 
-  const finishWorkout = () => {
+  const buildWorkout = (date: string) => {
     const currentExerciseLog = completed.some(Boolean) ? {
-      id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load,
+      id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? `${workoutId}:${exercise.name}`, date, week: state.week, routine: routineId, workoutId, exercise: exercise.name, load,
       sets: setReps.map((reps, index) => ({ reps, done: completed[index] })), rir, pain, note, skipped: false, suggestion,
     } satisfies ExerciseLog : undefined;
     const logs = currentExerciseLog
       ? [...routineLogs.filter((item) => item.exercise !== exercise.name), currentExerciseLog]
       : routineLogs;
     const workout: WorkoutLog = {
-      id: workoutId, date: new Date().toISOString(), week: state.week, routine: routineId,
+      id: workoutId, date, week: state.week, routine: routineId,
       routineName: sessionById.get(routineId)?.name ?? routineId, notes: savedWorkout?.notes ?? '',
       exercises: sessionExercises.map((item) => {
         const log = logs.find((entry) => entry.exercise === item.name);
         const doneSets = log?.sets.filter((set) => set.done).length ?? 0;
-        const status = log?.skipped ? 'skipped' : !log ? 'pending' : doneSets === log.sets.length ? 'done' : doneSets ? 'partial' : 'pending';
+        const status = log?.skipped ? 'skipped' : !log ? 'pending' : doneSets > 0 && doneSets === log.sets.length ? 'done' : doneSets ? 'partial' : 'pending';
         return { name: item.name, status, ...(log ? { logId: log.id } : {}) };
       }),
     };
+    return { workout, currentExerciseLog, logs };
+  };
+  const finishWorkout = () => {
+    if (!editable) return;
+    const { workout, currentExerciseLog } = buildWorkout(new Date().toISOString());
+    onStopRest();
+    onClearUndo();
+    try { localStorage.removeItem(sessionStartKey); } catch { /* Optional elapsed hint. */ }
+    setFinishReview(false);
     onFinish(workout, currentExerciseLog);
   };
+  const review = buildWorkout(day);
+  const reviewSets = review.logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.filter(set => set.done).length), 0);
 
   const doneNames = new Set(routineLogs.filter((log) => !log.skipped && log.sets.length > 0 && log.sets.every(set => set.done)).map(log => log.exercise));
   const completedInRoutine = doneNames.size;
+  const dark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return (
     <div className="space-y-4">
       <Dialog open={confirmUnmarked} onOpenChange={setConfirmUnmarked}><DialogContent><DialogTitle>¿Has completado todas las series?</DialogTitle><DialogDescription>No has marcado ninguna serie de {exercise.name}. Puedes marcar todas como hechas antes de guardar.</DialogDescription><div className="mt-2 flex flex-col gap-2"><Button className="min-h-12 rounded-xl" data-haptic="success" disabled={!editable} onClick={() => { const all = completed.map(() => true); setCompleted(() => all); commitExercise(all); }}><Check /> Marcar todas y guardar</Button><Button className="min-h-12 rounded-xl" disabled={!editable} onClick={() => commitExercise(completed)} variant="outline">Guardar sin marcar</Button><Button className="min-h-11 rounded-xl" onClick={() => setConfirmUnmarked(false)} variant="ghost">Cancelar</Button></div></DialogContent></Dialog>
-      {notice ? <p aria-live="polite" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 dark:text-emerald-200">{notice}</p> : null}
+      <WorkoutReview open={finishReview} onOpenChange={setFinishReview} items={review.workout.exercises.map((item, index) => ({ ...item, name: getExerciseDisplayName(item.name, sessionExercises[index]?.catalogId) }))} sets={reviewSets} minutes={reviewMinutes} onSelect={jumpToExercise} onFinish={finishWorkout} disabled={!editable} dark={dark} />
+      {notice ? <p aria-live="polite" className="motion-notice rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 dark:text-emerald-200">{notice}</p> : null}
       <section className="mb-6 flex items-end justify-between gap-4">
         <div><p className="mb-1 capitalize text-sm font-medium text-muted-foreground">{today} · Semana {state.week}</p><h1 className="page-title">Entrenamiento de hoy</h1></div>
-        <div className="hidden items-center gap-2 text-sm font-semibold text-muted-foreground sm:flex"><span className="size-2 rounded-full bg-emerald-500" /> Guardado</div>
+
       </section>
 
       <section className="summary-card">
         <div>
           <div className="mb-2 flex items-center gap-2">
-            <div className="no-scrollbar flex min-w-0 gap-1 overflow-x-auto">{routineIds.map((id) => <button key={id} aria-pressed={routineId === id} className={`min-h-11 shrink-0 rounded-lg px-3 text-xs font-bold ${routineId === id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`} onClick={() => { setRoutineId(id); setExerciseIndex(0); }} type="button">{completedPlanSlots(state.workoutLogs).has(`${state.week}:${id}`) ? '✓ ' : ''}{sessionById.get(id)?.name ?? id}</button>)}</div>
+            <div className="no-scrollbar flex min-w-0 gap-1 overflow-x-auto">{routineIds.map((id) => <button key={id} aria-pressed={routineId === id} className={`min-h-11 shrink-0 rounded-lg px-3 text-xs font-bold ${routineId === id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`} onClick={() => { onClearUndo(); setRoutineId(id); setExerciseIndex(0); }} type="button">{completedPlanSlots(state.workoutLogs).has(`${state.week}:${id}`) ? '✓ ' : ''}{sessionById.get(id)?.name ?? id}</button>)}</div>
             <span className="hidden text-xs font-bold uppercase text-muted-foreground sm:inline">{weekPlan.block}</span>
           </div>
           <p className="font-semibold">{sessionExercises.length} ejercicios · 45–55 min</p>
           <p className="mt-1 text-sm text-muted-foreground">{weekPlan.deload ? 'Descarga: menos series, técnica limpia y esfuerzo cómodo.' : 'Técnica cómoda. Deja las repeticiones previstas en reserva.'}</p>
         </div>
-        <div className="progress-ring">{completedInRoutine}/{sessionExercises.length}</div>
+        <ProgressRing value={sessionExercises.length ? completedInRoutine / sessionExercises.length * 100 : 0} label={`${completedInRoutine}/${sessionExercises.length}`} description="Ejercicios completados" />
       </section>
 
       <WarmupCard state={state} updateState={updateState} />
 
       <section aria-label="Ejercicios de la sesión" className="sticky top-2 z-10">
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md">
-          <button ref={exercisePicker} aria-label="Seleccionar ejercicio" aria-expanded={showExercises} aria-controls="session-exercise-list" className="flex min-h-14 w-full items-center gap-3 px-3 text-left" onKeyDown={event => { if (event.key === 'Escape') setShowExercises(false); }} onClick={() => setShowExercises(value => !value)} type="button">
-            <span className="shrink-0 rounded-lg bg-muted px-2 py-1.5 text-xs font-bold tabular-nums">{exerciseIndex + 1}/{sessionExercises.length}</span>
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</span>
-            <ChevronRight aria-hidden="true" className={`size-5 shrink-0 text-muted-foreground transition-transform ${showExercises ? '-rotate-90' : 'rotate-90'}`} />
-          </button>
-          <div id="session-exercise-list" hidden={!showExercises} className="max-h-[min(40dvh,320px)] overflow-y-auto overscroll-contain border-t border-border">
-            <ul className="space-y-1 p-2">
-              {sessionExercises.map((item, index) => <li key={item.name}>
-                <button aria-current={index === exerciseIndex ? 'step' : undefined} className={`flex min-h-12 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${index === exerciseIndex ? 'bg-primary/10 font-semibold text-primary' : 'hover:bg-muted'}`} onClick={() => { setExerciseIndex(index); setSaved(false); setShowExercises(false); exercisePicker.current?.focus(); }} type="button">
-                  <span className="w-5 shrink-0 text-center text-xs font-bold tabular-nums">{index + 1}</span>
-                  <span className="min-w-0 flex-1">{getExerciseDisplayName(item.name, item.catalogId)}</span>
-                  {doneNames.has(item.name) ? <Check aria-label="Completado" className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" /> : routineLogs.find((log) => log.exercise === item.name)?.skipped ? <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">No hecha</span> : null}
-                </button>
-              </li>)}
-            </ul>
-          </div>
-        </div>
+        <ExercisePickerSheet open={showExercises} onOpenChange={setShowExercises} current={exerciseIndex} onSelect={jumpToExercise} dark={dark} items={sessionExercises.map(item => ({ name: getExerciseDisplayName(item.name, item.catalogId), status: doneNames.has(item.name) ? 'done' : routineLogs.find(log => log.exercise === item.name)?.skipped ? 'skipped' : 'pending' }))} />
       </section>
 
-      <article className={`exercise-card ${saved ? 'ring-2 ring-emerald-500/40' : ''}`}>
+      <article ref={exerciseCard} className={`exercise-card ${saved ? 'ring-2 ring-emerald-500/40' : ''}`}><MotionSurface motionKey={exercise.name}>
         <div className="border-b border-border p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div><p className="eyebrow">Ejercicio {exerciseIndex + 1} de {sessionExercises.length}</p><h2 className="text-2xl font-bold tracking-tight">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</h2></div>
             <ExercisePreview key={exercise.name} image={exercise.image || details?.image} name={getExerciseDisplayName(exercise.name, exercise.catalogId)} description={description} />
           </div>
           <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{conciseExerciseText(description).join(' ')}</p>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm"><span><strong>Objetivo</strong> {exercise.target}</span><span className="text-muted-foreground">Última carga: {lastLog ? `${lastLog.load} ${exercise.unit}` : 'sin datos'}</span></div>
-          {lastLog ? <div className={`mt-3 inline-flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-bold ${lastLog.suggestion === 'subir' ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300' : lastLog.suggestion === 'bajar' ? 'bg-red-500/12 text-red-700 dark:text-red-300' : 'bg-amber-400/15 text-amber-700 dark:text-amber-300'}`}><TrendingUp className="size-3.5" /> La última vez: {lastLog.suggestion}</div> : null}
+          <div className="text-sm"><strong>Objetivo</strong> {exercise.target}</div>
         </div>
 
         <div className="p-4 sm:p-5">
           {exercise.unit !== 'reps' ? <div className="mb-5"><p className="control-label">Carga para todas las series</p><Stepper label={`Carga de ${exercise.name}`} value={load} onChange={setLoad} step={exercise.unit === 'kg' ? 0.5 : exercise.increment} suffix={exercise.unit} /></div> : null}
-          <div className="mb-3 flex items-center justify-between gap-3"><span className="control-label">Series</span><Button className="min-h-11 rounded-xl" data-haptic="success" variant="outline" aria-pressed={completed.length > 0 && completed.every(Boolean)} onClick={() => setCompleted((current) => current.map(() => !current.every(Boolean)))}><Check className="size-4" />{completed.every(Boolean) ? 'Desmarcar todas' : 'Marcar todas'}</Button></div>
+          <div className="mb-3 flex items-center justify-between gap-3"><span className="control-label">Series</span><Button className="min-h-11 rounded-xl" data-haptic="success" variant="outline" aria-pressed={completed.length > 0 && completed.every(Boolean)} onClick={() => toggleSets(completed.map(() => !completed.every(Boolean)), false)}><Check className="size-4" />{completed.every(Boolean) ? 'Desmarcar todas' : 'Marcar todas'}</Button></div>
           <div className="set-grid set-grid-header"><span>Serie</span><span>Repeticiones</span><span>Hecho</span></div>
           <div className="space-y-2.5">
             {setReps.map((reps, index) => (
-              <div key={index} className="set-grid">
+              <div key={index} className="set-grid completion-row rounded-xl" data-complete={completed[index]}>
                 <span className="text-center text-sm font-bold text-muted-foreground">{index + 1}</span>
-                <Stepper label={`Repeticiones, serie ${index + 1}`} value={reps} onChange={(value) => setSetReps((current) => current.map((item, itemIndex) => itemIndex === index ? value : item))} />
-                <button aria-label={`Marcar serie ${index + 1} como ${completed[index] ? 'pendiente' : 'hecha'}`} aria-pressed={completed[index]} className={`grid size-12 place-items-center justify-self-end rounded-xl border transition active:scale-95 ${completed[index] ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-border bg-background text-muted-foreground'}`} onClick={() => setCompleted((current) => current.map((item, itemIndex) => itemIndex === index ? !item : item))} type="button"><Check className="size-5" strokeWidth={3} /></button>
+                <div className="min-w-0"><Stepper label={`Repeticiones, serie ${index + 1}`} value={reps} onChange={(value) => setSetReps((current) => current.map((item, itemIndex) => itemIndex === index ? value : item))} />{lastLog?.sets[index]?.done ? <div className="mt-1 text-center"><GhostPerformance load={exercise.unit === 'reps' ? 0 : load} reps={reps} previousLoad={exercise.unit === 'reps' ? 0 : lastLog.load} previousReps={lastLog.sets[index].reps} unit={exercise.unit === 'reps' ? '' : exercise.unit} /></div> : null}</div>
+                <Checkbox aria-label={`Serie ${index + 1} hecha`} checked={completed[index]} className="size-12 justify-self-end rounded-xl after:inset-0 data-checked:border-emerald-500 data-checked:bg-emerald-500 dark:data-checked:bg-emerald-500 [&_svg]:size-5" onCheckedChange={(checked) => toggleSets(completed.map((item, itemIndex) => itemIndex === index ? Boolean(checked) : item), Boolean(checked))} />
               </div>
             ))}
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2"><Segmented label="RIR final" onChange={setRir} value={rir} values={[0, 1, 2, 3, 4]} /><label><span className="control-label">Molestias 0–10</span><select aria-label="Molestias 0–10" className="h-12 w-full rounded-xl border border-border bg-background px-3 font-semibold" value={pain} onChange={event => setPain(Number(event.target.value))}>{Array.from({length: 11}, (_, n) => <option key={n} value={n}>{n}{n === 0 ? ' · Sin molestias' : n >= 4 ? ' · Reduce o para' : ' · Molestia leve'}</option>)}</select></label></div>
+
+          <div className="mt-4"><RestSettings enabled={rest.enabled} seconds={rest.seconds} disabled={!editable} onEnabledChange={value => { updateState(current => ({ ...current, restEnabled: value })); if (!value) onStopRest(); }} onSecondsChange={value => updateState(current => ({ ...current, restSeconds: value }))} /></div>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2"><RirSelector disabled={!editable} onChange={setRir} value={rir} /><PainSlider disabled={!editable} value={pain} onChange={setPain} /></div>
           <div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-3.5 py-3 text-sm"><span className="flex items-center gap-2 font-medium"><StatusDot pain={pain} /> Recomendación</span><strong className="capitalize">{suggestion === 'subir' ? `subir a ${load + exercise.increment} ${exercise.unit}` : suggestion}</strong></div>
 
-          {showNotes ? <textarea aria-label="Notas rápidas" className="mt-4 min-h-20 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setNote(event.target.value)} placeholder="Técnica, sensaciones..." value={note} /> : null}
+          <AnimatedDisclosure id="exercise-notes" open={showNotes}><textarea aria-label="Notas rápidas" className="mt-4 min-h-20 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setNote(event.target.value)} placeholder="Técnica, sensaciones..." value={note} /></AnimatedDisclosure>
           <div className="mt-4 space-y-2">
             <Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" disabled={saved} data-haptic={completed.some(Boolean) ? 'success' : 'warning'} onClick={saveAndNext} size="lg">{saved ? <><Check /> Guardado</> : 'Guardar ejercicio'}</Button>
             <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-2">
               <Button aria-label="Ejercicio anterior" className="h-14 w-full rounded-xl" disabled={exerciseIndex === 0} onClick={() => setExerciseIndex((index) => Math.max(0, index - 1))} size="icon" variant="outline"><ChevronLeft /></Button>
               <Button aria-label="Marcar como no completado y pasar al siguiente ejercicio" className="h-14 w-full min-w-0 rounded-xl px-3 text-sm font-semibold" onClick={skipExercise} size="sm" variant="outline"><ChevronRight className="size-4" /> No hecha</Button>
-              <Button aria-label="Añadir nota" className="h-14 w-full rounded-xl" onClick={() => setShowNotes((value) => !value)} size="icon" variant="outline"><MoreHorizontal /></Button>
+              <Button aria-label="Añadir nota" aria-expanded={showNotes} aria-controls="exercise-notes" className="h-14 w-full rounded-xl" onClick={() => setShowNotes((value) => !value)} size="icon" variant="outline"><MoreHorizontal /></Button>
             </div>
           </div>
           <p className="mt-3 text-center text-xs font-medium text-muted-foreground">Las series se guardan en tu historial al guardar el ejercicio.</p>
         </div>
-      </article>
+      </MotionSurface></article>
 
       <section className="rounded-2xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center gap-3"><span className="icon-tile"><Check /></span><div className="min-w-0 flex-1"><strong className="block">{savedWorkout ? 'Entrenamiento registrado' : '¿Has terminado?'}</strong><small className="text-muted-foreground">{completedInRoutine} de {sessionExercises.length} ejercicios completados</small></div></div>
-        <Button className="h-12 w-full rounded-xl font-bold" onClick={finishWorkout}><Check /> {savedWorkout ? 'Actualizar entrenamiento' : 'Finalizar entrenamiento'}</Button>
-        {savedWorkout ? <output className="mt-2 block text-center text-xs text-emerald-700 dark:text-emerald-300">Guardado en Progreso · Historial de entrenamientos</output> : null}
+        <Button className="h-12 w-full rounded-xl font-bold" data-haptic="success" onClick={() => { let start = 0; try { start = Number(localStorage.getItem(sessionStartKey)); } catch { /* Optional. */ } setReviewMinutes(start ? Math.max(1, Math.round((Date.now() - start) / 60000)) : null); setFinishReview(true); }}><Check /> {savedWorkout ? 'Actualizar entrenamiento' : 'Finalizar entrenamiento'}</Button>
+        {savedWorkout ? <output className="motion-notice mt-2 block text-center text-xs text-emerald-700 dark:text-emerald-300">Guardado en Progreso · Historial de entrenamientos</output> : null}
       </section>
 
-      <button className="quick-card" onClick={() => setShowCardio((value) => !value)} type="button"><span className="icon-tile"><Wind /></span><span className="flex-1 text-left"><strong className="block">Registrar actividad</strong><small className="text-muted-foreground">Cardio, caminata o clase</small></span><Plus className={`transition ${showCardio ? 'rotate-45' : ''}`} /></button>
-      {showCardio ? <CardioForm updateState={updateState} /> : null}
+      <button aria-expanded={showCardio} aria-controls="cardio-form" className="quick-card" onClick={() => setShowCardio((value) => !value)} type="button"><span className="icon-tile"><Wind /></span><span className="flex-1 text-left"><strong className="block">Registrar actividad</strong><small className="text-muted-foreground">Cardio, caminata o clase</small></span><Plus className={`transition ${showCardio ? 'rotate-45' : ''}`} /></button>
+      <AnimatedDisclosure id="cardio-form" open={showCardio}><CardioForm updateState={updateState} /></AnimatedDisclosure>
     </div>
   );
 }
 
 function WarmupCard({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
   const [open, setOpen] = useState(false);
+  const panelId = useId();
   const keys = warmup.map((item) => `${localDateKey()}:${item}`);
   return (
     <section className="rounded-2xl border border-border bg-card">
-      <button className="flex w-full items-center gap-3 p-4 text-left" onClick={() => setOpen((value) => !value)} type="button"><span className="icon-tile"><RotateCcw /></span><span className="flex-1"><strong className="block">Calentamiento rápido</strong><small className="text-muted-foreground">{keys.filter((key) => state.warmupDone.includes(key)).length}/{warmup.length} completado</small></span><ChevronRight className={`text-muted-foreground transition ${open ? 'rotate-90' : ''}`} /></button>
-      {open ? <div className="space-y-1 border-t border-border p-3">{warmup.map((item, index) => { const key = keys[index]; return <label key={item} className="flex min-h-12 items-center gap-3 rounded-xl px-2 hover:bg-muted"><Checkbox checked={state.warmupDone.includes(key)} onCheckedChange={(checked) => updateState((current) => ({ ...current, warmupDone: checked ? [...current.warmupDone.filter((done) => done !== key), key] : current.warmupDone.filter((done) => done !== key) }))} /><span className="text-sm font-medium">{item}</span></label>; })}</div> : null}
+      <button aria-expanded={open} aria-controls={panelId} className="flex w-full items-center gap-3 p-4 text-left" onClick={() => setOpen((value) => !value)} type="button"><span className="icon-tile"><RotateCcw /></span><span className="flex-1"><strong className="block">Calentamiento rápido</strong><small className="text-muted-foreground">{keys.filter((key) => state.warmupDone.includes(key)).length}/{warmup.length} completado</small></span><ChevronRight className={`text-muted-foreground transition ${open ? 'rotate-90' : ''}`} /></button>
+      <AnimatedDisclosure id={panelId} open={open}><div className="space-y-1 border-t border-border p-3">{warmup.map((item, index) => { const key = keys[index]; return <label key={item} className="flex min-h-12 items-center gap-3 rounded-xl px-2 hover:bg-muted"><Checkbox checked={state.warmupDone.includes(key)} onCheckedChange={(checked) => updateState((current) => ({ ...current, warmupDone: checked ? [...current.warmupDone.filter((done) => done !== key), key] : current.warmupDone.filter((done) => done !== key) }))} /><span className="text-sm font-medium">{item}</span></label>; })}</div></AnimatedDisclosure>
     </section>
   );
 }
@@ -636,9 +668,9 @@ function ProgressView({ editable, state, updateState }: { editable: boolean; sta
     <div><div className="section-heading"><div><h1 className="page-title">Progreso</h1></div></div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric icon={Dumbbell} label="Fuerza" value={`${strengthSessions}`} detail="sesiones" /><Metric icon={Timer} label="Actividad" value={`${cardioMinutes}`} detail="minutos" /><Metric icon={Footprints} label="Pasos" value={steps ? `${Math.round(steps / 1000)}k` : '0'} detail="pasos" /><Metric icon={HeartPulse} label="Sin molestias" value={`${painFree}%`} detail="ejercicios" /></div>
       <MeasurementTracker state={state} updateState={updateState} />
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="mb-6"><h2 className="font-bold">Actividad · últimos 7 días</h2><p className="text-sm text-muted-foreground">Entrenamientos, cardio, caminatas y clases</p></div>{activityDays.some((day) => day.count > 0) ? <div className="flex h-40 items-end gap-3">{activityDays.map((day) => <div key={day.key} aria-label={`${day.count} actividades`} className="flex flex-1 flex-col items-center gap-2"><div className="flex h-full w-full items-end"><div className="w-full rounded-t-md bg-primary/75 transition-all" style={{ height: `${day.count ? Math.max(8, day.count / maxActivity * 100) : 0}%` }} /></div><span className="text-[10px] font-semibold capitalize text-muted-foreground">{day.label}</span></div>)}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Aún no hay actividad esta semana.</p>}</section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="mb-6"><h2 className="font-bold">Actividad · últimos 7 días</h2><p className="text-sm text-muted-foreground">Entrenamientos, cardio, caminatas y clases</p></div>{activityDays.some((day) => day.count > 0) ? <div className="flex h-40 items-end gap-3">{activityDays.map((day) => <div key={day.key} aria-label={`${day.count} actividades`} className="flex flex-1 flex-col items-center gap-2"><div className="flex h-full w-full items-end"><div className="activity-bar w-full rounded-t-md bg-primary/75 transition-all" style={{ height: `${day.count ? Math.max(8, day.count / maxActivity * 100) : 0}%` }} /></div><span className="text-[10px] font-semibold capitalize text-muted-foreground">{day.label}</span></div>)}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Aún no hay actividad esta semana.</p>}</section>
       {state.cardioLogs.length ? <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Actividad registrada</h2><div className="mt-3 divide-y divide-border">{[...state.cardioLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((log) => <div key={log.id} className="flex min-h-14 items-center justify-between gap-3 py-2"><div className="min-w-0"><strong className="block truncate text-sm">{log.type}</strong><small className="text-muted-foreground">{new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(log.date))}</small></div><span className="shrink-0 text-sm font-semibold tabular-nums">{log.minutes} min</span></div>)}</div></section> : null}
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Plan completado</h2><div className="mt-5 flex items-center gap-4"><div className="progress-ring size-20 border-[7px] text-lg">{planStatus.total ? Math.round((planStatus.done / planStatus.total) * 100) : 0}%</div><div><strong>{planStatus.done} de {planStatus.total} sesiones</strong><p className="mt-1 text-xs text-muted-foreground">{totalWeeks ? `Semana activa ${state.week} de ${totalWeeks} · ${activeWeek?.block ?? ''}` : 'Crea un plan para ver tu progresión.'}</p></div></div></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Plan completado</h2><div className="mt-5 flex items-center gap-4"><ProgressRing className="size-20 text-lg" value={planStatus.total ? planStatus.done / planStatus.total * 100 : 0} label={`${planStatus.total ? Math.round(planStatus.done / planStatus.total * 100) : 0}%`} description="Plan completado" /><div><strong>{planStatus.done} de {planStatus.total} sesiones</strong><p className="mt-1 text-xs text-muted-foreground">{totalWeeks ? `Semana activa ${state.week} de ${totalWeeks} · ${activeWeek?.block ?? ''}` : 'Crea un plan para ver tu progresión.'}</p></div></div></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex items-center justify-between"><div><h2 className="font-bold">Historial de entrenamientos</h2><p className="text-sm text-muted-foreground">Sesiones que has finalizado</p></div><span className="rounded-lg bg-muted px-2.5 py-1 text-xs font-bold tabular-nums">{state.workoutLogs.length}</span></div>
         {state.workoutLogs.length ? <div className="space-y-2">{[...state.workoutLogs].sort((a, b) => b.date.localeCompare(a.date)).map((workout) => {
@@ -677,6 +709,7 @@ function MobilityView({ state, updateState }: { state: AppState; updateState: (u
 }
 
 function ProfileView({ editable, state, updateState, user, cloudReady, authBusy, authError, onGoogleLogin, onLogout }: { editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; user: FirebaseUser | null; cloudReady: boolean; authBusy: boolean; authError: string; onGoogleLogin: () => void; onLogout: () => void }) {
+  const rest = restPreferences(state);
   const exportBackup = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -688,7 +721,8 @@ function ProfileView({ editable, state, updateState, user, cloudReady, authBusy,
   return (
     <div><div className="section-heading"><div><h1 className="page-title">Perfil</h1><p className="mt-1 text-sm text-muted-foreground">Cuenta y apariencia</p></div></div>
       <section className="mb-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Apariencia</h2><p className="mt-1 text-sm text-muted-foreground">Elige cómo se muestra la aplicación.</p><fieldset className="mt-4"><legend className="sr-only">Tema de la aplicación</legend><div className="grid grid-cols-3 gap-2">{([{ id: 'system', label: 'Sistema', icon: Monitor }, { id: 'light', label: 'Claro', icon: Sun }, { id: 'dark', label: 'Oscuro', icon: Moon }] as const).map(({ id, label, icon: Icon }) => <button key={id} disabled={!editable} aria-pressed={state.theme === id} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-2 text-sm font-semibold transition-colors ${state.theme === id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-foreground hover:bg-muted'}`} onClick={() => updateState((current) => ({ ...current, theme: id }))} type="button"><Icon className="size-4" />{label}</button>)}</div></fieldset></section>
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><label htmlFor="interaction-haptics" className="flex min-h-12 cursor-pointer items-center justify-between gap-4"><span><strong className="block">Vibración al interactuar</strong><span className="mt-1 block text-sm text-muted-foreground">Vibraciones suaves al marcar, navegar y guardar, si tu dispositivo y navegador lo permiten.</span></span><Checkbox id="interaction-haptics" aria-label="Vibración al interactuar" checked={state.haptics !== false} disabled={!editable} onCheckedChange={(checked) => updateState((current) => ({ ...current, haptics: Boolean(checked) }))} /></label><HapticCheck enabled={state.haptics !== false} /></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="mb-3 font-bold">Descanso entre series</h2><RestSettings enabled={rest.enabled} seconds={rest.seconds} disabled={!editable} onEnabledChange={value => updateState(current => ({ ...current, restEnabled: value }))} onSecondsChange={value => updateState(current => ({ ...current, restSeconds: value }))} /><p className="mt-3 text-xs text-muted-foreground">Se guarda en tu cuenta y se comparte con tus dispositivos.</p></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><PreferenceSwitch label="Vibración al interactuar" description="Vibraciones suaves al marcar, navegar y guardar, si tu dispositivo y navegador lo permiten." checked={state.haptics !== false} disabled={!editable} onCheckedChange={(checked) => updateState((current) => ({ ...current, haptics: checked }))} /><HapticCheck enabled={state.haptics !== false} /></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5">
         {user ? <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">{(user.displayName || user.email || 'U').slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><strong className="block truncate">{user.displayName || 'Cuenta de Google'}</strong><small className="block truncate text-muted-foreground">{user.email}</small></div><Button aria-label="Cerrar sesión" className="size-11 rounded-xl" disabled={authBusy} onClick={onLogout} size="icon" variant="outline"><LogOut /></Button></div> : <div><div className="mb-4 flex gap-3"><span className="icon-tile"><Cloud /></span><div><strong className="block">Cuenta</strong><small className="text-muted-foreground">Inicia sesión para sincronizar entre dispositivos.</small></div></div><Button className="h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50" disabled={authBusy || !firebaseConfigured} onClick={onGoogleLogin}><span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">G</span>{authBusy ? 'Conectando…' : 'Continuar con Google'}</Button>{authError ? <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{authError}</p> : null}</div>}
       </section>
@@ -712,9 +746,27 @@ export default function HomePage() {
   const [preferredRoutine, setPreferredRoutine] = useState('');
   const [trainingNotice, setTrainingNotice] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [restDeadline, setRestDeadline] = useState<number | null>(null);
+  const [undo, setUndo] = useState<{ id: number; message: string; action: () => void } | null>(null);
+  const stopRest = useCallback(() => setRestDeadline(null), []);
+  const startRest = useCallback(() => setRestDeadline(Date.now() + restPreferences(state).seconds * 1000), [state]);
+  useEffect(() => { if (state.restEnabled !== false) return; const timer = window.setTimeout(stopRest, 0); return () => window.clearTimeout(timer); }, [state.restEnabled, stopRest]);
+  const dismissUndo = useCallback(() => setUndo(null), []);
+  const offerUndo = useCallback((message: string, action: () => void) => setUndo({ id: Date.now(), message, action }), []);
   const loadSequence = useRef(0);
   const persistence = useRef<WorkoutPersistence | null>(null);
+  const contentScroll = useRef<HTMLElement>(null);
+  const scrollContentToTop = useCallback(() => {
+    contentScroll.current?.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, []);
   const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>({ local: 'saved', cloud: 'pending', canEdit: false, error: '' });
+
+  const [viewDirection, setViewDirection] = useState<-1 | 0 | 1>(0);
+  const selectView = useCallback((id: Tab, direction: -1 | 0 | 1 = 0) => {
+    if (id !== tab) { setViewDirection(direction); setTab(id); }
+    scrollContentToTop();
+  }, [tab, scrollContentToTop]);
+  const swipeHandlers = useSwipeNavigation({ views: navItems.map((item) => item.id), active: tab, onNavigate: selectView });
 
   useInteractionFeedback(state.haptics !== false);
 
@@ -859,7 +911,7 @@ export default function HomePage() {
     setTrainingNotice('');
     updateState((current) => ({ ...current, week }));
     setTab('today');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollContentToTop();
   };
 
   const finishSession = (workout: WorkoutLog, exerciseLog?: ExerciseLog) => {
@@ -878,10 +930,10 @@ export default function HomePage() {
     } else {
       setTrainingNotice(countsTowardPlan(workout) ? 'Sesión registrada. No quedan sesiones pendientes en el plan.' : 'Entrenamiento guardado. Esta sesión sigue pendiente porque no hay ejercicios realizados.');
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollContentToTop();
   };
 
-  const content = tab === 'today' ? <TodayView editable={persistenceStatus.canEdit} key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView editable={persistenceStatus.canEdit} state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
+  const content = tab === 'today' ? <TodayView editable={persistenceStatus.canEdit} key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} onStartRest={startRest} onStopRest={stopRest} onOfferUndo={offerUndo} onClearUndo={dismissUndo} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView editable={persistenceStatus.canEdit} state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
 
   if (!hydrated) return <main className="grid min-h-dvh place-items-center bg-background px-6 text-foreground"><div className="text-center"><span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground"><HeartPulse className="size-7" /></span><p className="text-sm text-muted-foreground">Comprobando acceso…</p></div></main>;
   if (!firebaseUser || firebaseUser.isAnonymous) return (
@@ -901,13 +953,14 @@ export default function HomePage() {
 
   return (
     <div className={isDark ? 'dark' : ''}>
-      <main className="min-h-dvh bg-background text-foreground">
-        <div className="mx-auto min-h-dvh max-w-[1180px] px-4 pb-28 pt-5 sm:px-7 lg:pb-28">
+      <div className="app-shell bg-background text-foreground" data-rest-active={restDeadline !== null}>
+        <main ref={contentScroll} className="app-content" {...swipeHandlers}>
+        <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
           <header className="mb-7 flex items-center justify-between">
             <button className="flex items-center gap-3 text-left" onClick={() => setTab('today')} type="button"><span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"><HeartPulse className="size-5" strokeWidth={2.4} /></span><span><span className="block text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Base</span><span className="block text-sm font-semibold">Seguimiento de entrenamiento</span></span></button>
-            <div className="flex items-center gap-2"><span aria-label={persistenceStatus.local === 'error' ? 'Error al guardar' : syncing ? 'Guardando' : 'Guardado'} className="hidden items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:flex">{syncing ? <Activity className="size-4 animate-pulse" /> : firebaseUser && cloudReady ? <Cloud className="size-4" /> : <Save className="size-4" />}{persistenceStatus.local === 'error' ? 'Error al guardar' : syncing ? 'Guardando' : firebaseUser && cloudReady ? 'Sincronizado' : 'Pendiente de Firebase'}</span><Button aria-label="Abrir perfil" className="size-11 rounded-xl border-border bg-card text-foreground shadow-sm hover:bg-muted" onClick={() => setTab('profile')} size="icon" variant="outline"><CircleUserRound /></Button></div>
+            <div className="flex items-center gap-2"><SaveStatus status={persistenceStatus} /><Button aria-label="Abrir perfil" className="size-11 rounded-xl border-border bg-card text-foreground shadow-sm hover:bg-muted" onClick={() => setTab('profile')} size="icon" variant="outline"><CircleUserRound /></Button></div>
           </header>
-          <div className="mx-auto max-w-[760px]">
+          <MotionSurface className="mx-auto max-w-[760px]" motionKey={tab} direction={viewDirection}>
             {updateAvailable && tab === 'today' ? <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3"><span className="text-sm font-medium">Nueva versión disponible</span><Button className="min-h-10 shrink-0 rounded-lg" onClick={() => window.location.reload()} size="sm" variant="outline">Actualizar</Button></output> : null}
             {tab === 'timers' ? <div className="section-heading"><div><p className="eyebrow">Herramientas de entrenamiento</p><h1 className="page-title">Temporizadores</h1></div></div> : null}
             <div className={tab === 'timers' ? '' : 'hidden'}><WorkoutTimer /></div>
@@ -916,10 +969,14 @@ export default function HomePage() {
             <fieldset disabled={!persistenceStatus.canEdit && tab !== 'profile'} className="min-w-0">
             {tab === 'timers' ? null : tab === 'profile' ? <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} /> : content}
             </fieldset>
-          </div>
+          </MotionSurface>
         </div>
-        <nav aria-label="Navegación principal" className="bottom-nav"><div className="mx-auto grid max-w-[680px] grid-cols-5">{navItems.map(({ id, label, icon: Icon }) => <button key={id} aria-current={tab === id ? 'page' : undefined} className={`nav-button ${tab === id ? 'text-primary' : 'text-muted-foreground'}`} onClick={() => { setTab(id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} type="button"><Icon className="size-5" strokeWidth={tab === id ? 2.7 : 2} />{label}</button>)}</div></nav>
-      </main>
+        </main>
+          {undo ? <UndoNotice key={undo.id} message={undo.message} onDismiss={dismissUndo} onUndo={() => { if (persistenceStatus.canEdit) undo.action(); }} /> : null}
+
+        {restDeadline !== null ? <RestDock key={restDeadline} deadline={restDeadline} onDismiss={stopRest} /> : null}
+        <div className="bottom-nav"><div className="mx-auto max-w-[680px]"><LiquidNavigation items={navItems} active={tab} onSelect={selectView} /></div></div>
+      </div>
     </div>
   );
 }
