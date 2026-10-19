@@ -28,6 +28,7 @@ export type AppState = {
   warmupDone: string[];
   classes: string[];
   theme: ThemePreference;
+  haptics?: boolean;
 };
 
 export const defaultState: AppState = { version: 3, week: 1, planName: '', periods: [], sessions: [], plan: [], exerciseLogs: [], workoutLogs: [], cardioLogs: [], measurements: [], mobilityDone: [], warmupDone: [], classes: [], theme: 'system' };

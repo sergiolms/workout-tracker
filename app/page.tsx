@@ -21,6 +21,9 @@ import { BASE_SESSION_IDS, backupLocalState, clearAppLocalData, defaultState, lo
 
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { appRelease } from '@/lib/app-version';
+import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
+import { exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
+import { hapticFeedback, type HapticKind } from '@/lib/haptics';
 
 type Tab = 'today' | 'plan' | 'timers' | 'progress' | 'mobility' | 'profile';
 
@@ -211,7 +214,7 @@ function WorkoutTimer() {
   );
 }
 
-function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFinish, notice }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
+function TodayView({ editable, state, updateState, onOpenSessions, preferredRoutine, onFinish, notice }: { editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
   const weekPlan = state.plan.find((week) => week.week === state.week) ?? state.plan[0];
   const sessionById = useMemo(() => new Map(state.sessions.map((session) => [session.id, session])), [state.sessions]);
   const routineIds = useMemo(() => (weekPlan?.routines ?? []).filter((id) => sessionById.has(id)), [sessionById, weekPlan]);
@@ -241,6 +244,7 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
   const [showExercises, setShowExercises] = useState(false);
   const exercisePicker = useRef<HTMLButtonElement>(null);
   const [saved, setSaved] = useState(false);
+  const [confirmUnmarked, setConfirmUnmarked] = useState(false);
 
   useEffect(() => {
     if (routineIds.length && !routineIds.includes(routineId)) {
@@ -252,14 +256,14 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
   if (!weekPlan) return <div className="space-y-4"><section className="summary-card"><div><p className="eyebrow">Tu entrenamiento</p><h1 className="page-title">Entrenamiento de hoy</h1></div></section><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-bold">Crea tu plan para empezar</h2><p className="mt-2 text-sm text-muted-foreground">Define tus periodos y asigna las sesiones que quieras hacer.</p><Button className="mt-4 h-12 w-full rounded-xl font-bold" onClick={onOpenSessions}><Plus /> Crear plan</Button></section><WarmupCard state={state} updateState={updateState} /></div>;
   if (!routineIds.length) return <div className="space-y-4"><section className="summary-card"><div><p className="eyebrow">Semana {state.week}</p><h1 className="page-title">Entrenamiento de hoy</h1></div></section><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-bold">No hay sesiones asignadas a esta semana</h2><p className="mt-2 text-sm text-muted-foreground">Añade o asigna una rutina desde tu plan.</p><Button className="mt-4 h-12 w-full rounded-xl font-bold" onClick={onOpenSessions}><Plus /> Abrir plan</Button></section><WarmupCard state={state} updateState={updateState} /></div>;
 
-  const suggestion: ExerciseLog['suggestion'] = pain >= 4 || rir < 1 || setReps.some((reps) => reps < exercise.minReps)
-    ? 'bajar'
-    : completed.every(Boolean) && setReps.every((reps) => reps >= exercise.maxReps) && rir >= 1
-      ? 'subir' : 'mantener';
+  const suggestion = exerciseSuggestion(exercise, { sets: setReps.map((reps, index) => ({ reps, done: completed[index] })), rir, pain });
 
-  const saveAndNext = () => {
-    const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: setReps.map((reps, index) => ({ reps, done: completed[index] })), rir, pain, note, skipped: false, suggestion };
-    updateState((current) => ({ ...current, exerciseLogs: [...current.exerciseLogs.filter((item) => item.id !== log.id), log] }));
+  const commitExercise = (done: boolean[]) => {
+    if (!editable) return;
+    const sets = setReps.map((reps, index) => ({ reps, done: Boolean(done[index]) }));
+    const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets, rir, pain, note, skipped: false, suggestion: exerciseSuggestion(exercise, { sets, rir, pain }) };
+    updateState((current) => saveExerciseLog(current, log));
+    setConfirmUnmarked(false);
     setSaved(true);
     window.setTimeout(() => {
       setExerciseIndex((current) => current < sessionExercises.length - 1 ? current + 1 : current);
@@ -267,9 +271,14 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
     }, 260);
   };
 
+  const saveAndNext = () => {
+    if (!completed.some(Boolean)) { setConfirmUnmarked(true); return; }
+    commitExercise(completed);
+  };
+
   const skipExercise = () => {
     const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: setReps.map((reps) => ({ reps, done: false })), rir, pain, note, skipped: true, suggestion: 'mantener' };
-    updateState((current) => ({ ...current, exerciseLogs: [...current.exerciseLogs.filter((item) => item.id !== log.id), log] }));
+    updateState((current) => saveExerciseLog(current, log));
     setExerciseIndex((current) => Math.min(current + 1, sessionExercises.length - 1));
     setSaved(true);
     window.setTimeout(() => setSaved(false), 500);
@@ -301,6 +310,7 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
 
   return (
     <div className="space-y-4">
+      <Dialog open={confirmUnmarked} onOpenChange={setConfirmUnmarked}><DialogContent><DialogTitle>¿Has completado todas las series?</DialogTitle><DialogDescription>No has marcado ninguna serie de {exercise.name}. Puedes marcar todas como hechas antes de guardar.</DialogDescription><div className="mt-2 flex flex-col gap-2"><Button className="min-h-12 rounded-xl" data-haptic="success" disabled={!editable} onClick={() => { const all = completed.map(() => true); setCompleted(() => all); commitExercise(all); }}><Check /> Marcar todas y guardar</Button><Button className="min-h-12 rounded-xl" disabled={!editable} onClick={() => commitExercise(completed)} variant="outline">Guardar sin marcar</Button><Button className="min-h-11 rounded-xl" onClick={() => setConfirmUnmarked(false)} variant="ghost">Cancelar</Button></div></DialogContent></Dialog>
       {notice ? <p aria-live="polite" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-800 dark:text-emerald-200">{notice}</p> : null}
       <section className="mb-6 flex items-end justify-between gap-4">
         <div><p className="mb-1 capitalize text-sm font-medium text-muted-foreground">{today} · Semana {state.week}</p><h1 className="page-title">Entrenamiento de hoy</h1></div>
@@ -355,6 +365,7 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
 
         <div className="p-4 sm:p-5">
           {exercise.unit !== 'reps' ? <div className="mb-5"><p className="control-label">Carga para todas las series</p><Stepper value={load} onChange={setLoad} step={exercise.increment} suffix={exercise.unit} /></div> : null}
+          <div className="mb-3 flex items-center justify-between gap-3"><span className="control-label">Series</span><Button className="min-h-11 rounded-xl" data-haptic="success" variant="outline" aria-pressed={completed.length > 0 && completed.every(Boolean)} onClick={() => setCompleted((current) => current.map(() => !current.every(Boolean)))}><Check className="size-4" />{completed.every(Boolean) ? 'Desmarcar todas' : 'Marcar todas'}</Button></div>
           <div className="set-grid set-grid-header"><span>Serie</span><span>Repeticiones</span><span>Hecho</span></div>
           <div className="space-y-2.5">
             {setReps.map((reps, index) => (
@@ -371,7 +382,7 @@ function TodayView({ state, updateState, onOpenSessions, preferredRoutine, onFin
 
           {showNotes ? <textarea aria-label="Notas rápidas" className="mt-4 min-h-20 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setNote(event.target.value)} placeholder="Técnica, sensaciones..." value={note} /> : null}
           <div className="mt-4 space-y-2">
-            <Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" onClick={saveAndNext} size="lg">{saved ? <><Check /> Guardado</> : 'Guardar ejercicio'}</Button>
+            <Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" disabled={saved} data-haptic={completed.some(Boolean) ? 'success' : 'warning'} onClick={saveAndNext} size="lg">{saved ? <><Check /> Guardado</> : 'Guardar ejercicio'}</Button>
             <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-2">
               <Button aria-label="Ejercicio anterior" className="h-14 w-full rounded-xl" disabled={exerciseIndex === 0} onClick={() => setExerciseIndex((index) => Math.max(0, index - 1))} size="icon" variant="outline"><ChevronLeft /></Button>
               <Button aria-label="Marcar como no completado y pasar al siguiente ejercicio" className="h-14 w-full min-w-0 rounded-xl px-3 text-sm font-semibold" onClick={skipExercise} size="sm" variant="outline"><ChevronRight className="size-4" /> No hecha</Button>
@@ -602,10 +613,8 @@ function SessionBuilder({ initialSession, onSave, onCancel }: { initialSession?:
   );
 }
 
-function ProgressView({ state, updateState }: { state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
+function ProgressView({ editable, state, updateState }: { editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
   const [editingWorkout, setEditingWorkout] = useState<WorkoutLog | null>(null);
-  const [editDate, setEditDate] = useState('');
-  const [editNotes, setEditNotes] = useState('');
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutLog | null>(null);
   const workoutKeys = new Set(state.workoutLogs.filter(countsTowardPlan).map((workout) => workout.id));
   const legacyWorkoutKeys = new Set(state.exerciseLogs.filter((log) => !log.workoutId && log.sets.some((set) => set.done)).map((log) => `${new Date(log.date).toLocaleDateString('en-CA')}:${log.week}:${log.routine}`));
@@ -624,18 +633,6 @@ function ProgressView({ state, updateState }: { state: AppState; updateState: (u
     return { key, label: new Intl.DateTimeFormat('es-ES', { weekday: 'narrow' }).format(date), count: workouts + cardio };
   });
   const maxActivity = Math.max(1, ...activityDays.map((day) => day.count));
-  const openWorkoutEditor = (workout: WorkoutLog) => {
-    setEditingWorkout(workout);
-    setEditDate(new Date(workout.date).toLocaleDateString('en-CA'));
-    setEditNotes(workout.notes);
-  };
-  const saveWorkoutEdit = () => {
-    if (!editingWorkout || !editDate) return;
-    const date = new Date(`${editDate}T12:00:00`).toISOString();
-    const logIds = new Set(editingWorkout.exercises.flatMap((exercise) => exercise.logId ? [exercise.logId] : []));
-    updateState((current) => ({ ...current, workoutLogs: current.workoutLogs.map((workout) => workout.id === editingWorkout.id ? { ...workout, date, notes: editNotes.trim() } : workout), exerciseLogs: current.exerciseLogs.map((log) => logIds.has(log.id) ? { ...log, date } : log) }));
-    setEditingWorkout(null);
-  };
   const deleteWorkout = () => {
     if (!deletingWorkout) return;
     const logIds = new Set(deletingWorkout.exercises.flatMap((exercise) => exercise.logId ? [exercise.logId] : []));
@@ -655,10 +652,10 @@ function ProgressView({ state, updateState }: { state: AppState; updateState: (u
           const completed = workout.exercises.filter((item) => item.status === 'done').length;
           const partial = workout.exercises.filter((item) => item.status === 'partial').length;
           const dateLabel = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(workout.date));
-          return <details key={workout.id} className="rounded-xl border border-border bg-background"><summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-3"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Dumbbell className="size-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate">{workout.routineName}</strong><small className="text-muted-foreground">{dateLabel} · Semana {workout.week}</small></span><span className="text-right text-xs font-semibold text-muted-foreground">{completed}/{workout.exercises.length}<small className="block">hechos{partial ? ` · ${partial} parciales` : ''}</small></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></summary><div className="space-y-2 border-t border-border p-3"><ul className="space-y-1">{workout.exercises.map((item) => <li key={item.name} className="flex items-center justify-between gap-3 text-sm"><span>{item.name}</span><span className={item.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : item.status === 'partial' ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}>{item.status === 'done' ? 'Completado' : item.status === 'partial' ? 'Parcial' : item.status === 'skipped' ? 'No completado' : 'Pendiente'}</span></li>)}</ul>{workout.notes ? <p className="rounded-lg bg-muted p-3 text-sm">{workout.notes}</p> : null}<div className="flex gap-2 border-t border-border pt-3"><Button className="min-h-11 flex-1 rounded-xl" onClick={() => openWorkoutEditor(workout)} variant="outline"><Pencil className="size-4" /> Editar</Button><Button className="min-h-11 rounded-xl text-red-700 dark:text-red-300" onClick={() => setDeletingWorkout(workout)} variant="outline"><Trash2 className="size-4" /> Borrar</Button></div></div></details>;
+          return <details key={workout.id} className="rounded-xl border border-border bg-background"><summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-3"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Dumbbell className="size-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate">{workout.routineName}</strong><small className="text-muted-foreground">{dateLabel} · Semana {workout.week}</small></span><span className="text-right text-xs font-semibold text-muted-foreground">{completed}/{workout.exercises.length}<small className="block">hechos{partial ? ` · ${partial} parciales` : ''}</small></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></summary><div className="space-y-2 border-t border-border p-3"><ul className="space-y-1">{workout.exercises.map((item) => <li key={item.name} className="flex items-center justify-between gap-3 text-sm"><span>{item.name}</span><span className={item.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : item.status === 'partial' ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}>{item.status === 'done' ? 'Completado' : item.status === 'partial' ? 'Parcial' : item.status === 'skipped' ? 'No completado' : 'Pendiente'}</span></li>)}</ul>{workout.notes ? <p className="rounded-lg bg-muted p-3 text-sm">{workout.notes}</p> : null}<div className="flex gap-2 border-t border-border pt-3"><Button className="min-h-11 flex-1 rounded-xl" onClick={() => setEditingWorkout(workout)} variant="outline"><Pencil className="size-4" /> Editar</Button><Button className="min-h-11 rounded-xl text-red-700 dark:text-red-300" onClick={() => setDeletingWorkout(workout)} variant="outline"><Trash2 className="size-4" /> Borrar</Button></div></div></details>;
         })}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Al finalizar una sesión desde “Hoy”, aparecerá aquí junto con sus ejercicios y estado.</p>}
       </section>
-      <Dialog open={Boolean(editingWorkout)} onOpenChange={(open) => { if (!open) setEditingWorkout(null); }}><DialogContent><DialogTitle>Editar entrenamiento</DialogTitle><DialogDescription>Actualiza la fecha o añade una nota a esta sesión.</DialogDescription><label className="mt-4 block"><span className="control-label">Fecha</span><input aria-label="Fecha del entrenamiento" className="mt-1 h-12 w-full rounded-xl border border-border bg-background px-3" onChange={(event) => setEditDate(event.target.value)} type="date" value={editDate} /></label><label className="mt-3 block"><span className="control-label">Notas</span><textarea aria-label="Notas del entrenamiento" className="mt-1 min-h-24 w-full rounded-xl border border-border bg-background p-3 text-sm" onChange={(event) => setEditNotes(event.target.value)} placeholder="Sensaciones o comentarios" value={editNotes} /></label><Button className="mt-4 h-12 w-full rounded-xl font-bold" disabled={!editDate} onClick={saveWorkoutEdit}><Save /> Guardar</Button></DialogContent></Dialog>
+      {editingWorkout ? <WorkoutHistoryEditor editable={editable} key={editingWorkout.id} state={state} workout={editingWorkout} onSave={updateState} onClose={() => setEditingWorkout(null)} /> : null}
       <Dialog open={Boolean(deletingWorkout)} onOpenChange={(open) => { if (!open) setDeletingWorkout(null); }}><DialogContent><DialogTitle>¿Borrar este entrenamiento?</DialogTitle><DialogDescription>Se eliminará esta sesión y los registros de ejercicios vinculados. No se puede deshacer.</DialogDescription><div className="mt-4 flex justify-end gap-2"><Button onClick={() => setDeletingWorkout(null)} variant="outline">Cancelar</Button><Button className="bg-red-600 text-white hover:bg-red-700" onClick={deleteWorkout}><Trash2 /> Borrar</Button></div></DialogContent></Dialog>
     </div>
   );
@@ -698,6 +695,7 @@ function ProfileView({ editable, state, updateState, user, cloudReady, authBusy,
   return (
     <div><div className="section-heading"><div><h1 className="page-title">Perfil</h1><p className="mt-1 text-sm text-muted-foreground">Cuenta y apariencia</p></div></div>
       <section className="mb-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Apariencia</h2><p className="mt-1 text-sm text-muted-foreground">Elige cómo se muestra la aplicación.</p><fieldset className="mt-4"><legend className="sr-only">Tema de la aplicación</legend><div className="grid grid-cols-3 gap-2">{([{ id: 'system', label: 'Sistema', icon: Monitor }, { id: 'light', label: 'Claro', icon: Sun }, { id: 'dark', label: 'Oscuro', icon: Moon }] as const).map(({ id, label, icon: Icon }) => <button key={id} disabled={!editable} aria-pressed={state.theme === id} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-2 text-sm font-semibold transition-colors ${state.theme === id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-foreground hover:bg-muted'}`} onClick={() => updateState((current) => ({ ...current, theme: id }))} type="button"><Icon className="size-4" />{label}</button>)}</div></fieldset></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><label className="flex min-h-12 cursor-pointer items-center justify-between gap-4"><span><strong className="block">Vibración al interactuar</strong><span className="mt-1 block text-sm text-muted-foreground">Vibraciones suaves al marcar, navegar y guardar, si tu dispositivo y navegador lo permiten.</span></span><Checkbox aria-label="Vibración al interactuar" checked={state.haptics !== false} disabled={!editable} onCheckedChange={(checked) => updateState((current) => ({ ...current, haptics: Boolean(checked) }))} /></label></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5">
         {user ? <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">{(user.displayName || user.email || 'U').slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><strong className="block truncate">{user.displayName || 'Cuenta de Google'}</strong><small className="block truncate text-muted-foreground">{user.email}</small></div><Button aria-label="Cerrar sesión" className="size-11 rounded-xl" disabled={authBusy} onClick={onLogout} size="icon" variant="outline"><LogOut /></Button></div> : <div><div className="mb-4 flex gap-3"><span className="icon-tile"><Cloud /></span><div><strong className="block">Cuenta</strong><small className="text-muted-foreground">Inicia sesión para sincronizar entre dispositivos.</small></div></div><Button className="h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50" disabled={authBusy || !firebaseConfigured} onClick={onGoogleLogin}><span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">G</span>{authBusy ? 'Conectando…' : 'Continuar con Google'}</Button>{authError ? <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{authError}</p> : null}</div>}
       </section>
@@ -724,6 +722,19 @@ export default function HomePage() {
   const loadSequence = useRef(0);
   const persistence = useRef<WorkoutPersistence | null>(null);
   const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>({ local: 'saved', cloud: 'pending', canEdit: false, error: '' });
+
+  useEffect(() => {
+    if (state.haptics === false) return;
+    const onInteraction = (event: MouseEvent) => {
+      if (!event.isTrusted || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>('button, [role="button"], [role="checkbox"], summary, input[type="checkbox"]');
+      if (!control || control.matches(':disabled, [aria-disabled="true"]')) return;
+      const kind = control.dataset.haptic;
+      hapticFeedback(kind === 'success' || kind === 'warning' ? kind as HapticKind : 'tap');
+    };
+    document.addEventListener('click', onInteraction, true);
+    return () => document.removeEventListener('click', onInteraction, true);
+  }, [state.haptics]);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -888,7 +899,7 @@ export default function HomePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const content = tab === 'today' ? <TodayView key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
+  const content = tab === 'today' ? <TodayView editable={persistenceStatus.canEdit} key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView editable={persistenceStatus.canEdit} state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
 
   if (!hydrated) return <main className="grid min-h-dvh place-items-center bg-background px-6 text-foreground"><div className="text-center"><span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground"><HeartPulse className="size-7" /></span><p className="text-sm text-muted-foreground">Comprobando acceso…</p></div></main>;
   if (!firebaseUser || firebaseUser.isAnonymous) return (
