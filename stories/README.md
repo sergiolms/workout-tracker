@@ -2,7 +2,9 @@
 
 Iniciar: `npm run storybook` → http://127.0.0.1:6006/.
 
+- **Guía / Interacciones y formularios** muestra los patrones compartidos de entrenamiento, actividad y perfil, con opciones secundarias plegadas.
 - **Guía / Componentes en acción** reúne los controles reales en una sesión ficticia.
+- **Entrenamiento / Índice de ejercicios** permite recorrer el catálogo con una rueda vertical de cinco posiciones, mediante deslizamiento o teclado.
 - **Entrenamiento / Experiencia de sesión** permite probar deshacer, saltar el descanso, los datos fantasma, el selector inferior y el resumen antes de finalizar.
 - Las historias individuales permiten cambiar valores y estados desde **Controls**.
 - El selector **Tema** de la barra superior alterna claro y oscuro.

@@ -12,7 +12,7 @@ import { MeasurementTracker } from '@/components/measurement-tracker';
 import { MobilityIllustration } from '@/components/mobility-illustration';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { browseCatalog, catalogLetters, exerciseImageUrl, getExerciseDescription, getExerciseDetails, getExerciseDisplayName, type CatalogExercise } from '@/lib/exercise-catalog';
+import { exerciseCatalogSections, exerciseImageUrl, getExerciseDescription, getExerciseDetails, getExerciseDisplayName, type CatalogExercise } from '@/lib/exercise-catalog';
 import { firebaseConfigured, loadFromFirebase, signInWithGoogle, signOutFirebase, subscribeToAuth, syncToFirebase, type FirebaseUser } from '@/lib/firebase';
 import { completedPlanSlots, countsTowardPlan, nextPlanSession, planProgress } from '@/lib/plan-progress';
 import { mobilityGuides, resetMobilityKeys } from '@/lib/mobility-guide';
@@ -21,12 +21,22 @@ import { BASE_SESSION_IDS, backupLocalState, clearAppLocalData, defaultState, lo
 
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { appRelease } from '@/lib/app-version';
+import { ActivityHistoryEditor, ActivityDeleteDialog } from '@/components/activity-history-editor';
+import { OptionalSection } from '@/components/optional-section';
+import { SectionedExerciseCatalog } from '@/components/sectioned-exercise-catalog';
+import { ActivityTypePicker, DurationPicker } from '@/components/activity-controls';
+import { EffortSelector } from '@/components/effort-selector';
+import { ActivityEstimates } from '@/components/activity-estimates';
+import { activityEstimates, formatPace } from '@/lib/activity-estimates';
+import { applyActivityEdit, deleteActivity } from '@/lib/activity-history';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { previousExerciseLog, undoSkippedExercise } from '@/lib/workout-experience';
 import { ExercisePickerSheet, WorkoutReview } from '@/components/training-dialogs';
 import { GhostPerformance, RestDock, SaveStatus, UndoNotice } from '@/components/workout-feedback';
+import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-editor';
+import { exercisePrescription } from '@/lib/exercise-prescription';
 import { exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
-import { RirSelector, SegmentedControl } from '@/components/segmented-control';
+import { RirSelector } from '@/components/segmented-control';
 import { PainSlider } from '@/components/pain-slider';
 import { RestSettings } from '@/components/rest-settings';
 import { restPreferences } from '@/lib/rest-preferences';
@@ -56,10 +66,6 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 function markSessionStarted(key: string) { try { if (!localStorage.getItem(key)) localStorage.setItem(key, String(Date.now())); } catch { /* Optional elapsed-time hint. */ } }
 
-function Segmented({ value, values, onChange, label }: { value: number; values: number[]; onChange: (value: number) => void; label: string }) {
-  return <SegmentedControl label={label} value={value} onChange={onChange} options={values.map((number) => ({ value: number, label: String(number) }))} />;
-}
-
 function StatusDot({ pain }: { pain: number }) {
   return <span className={`inline-block size-2.5 rounded-full ${pain >= 4 ? 'bg-red-500' : pain >= 2 ? 'bg-amber-400' : 'bg-emerald-500'}`} />;
 }
@@ -78,7 +84,8 @@ function useExerciseDraft(key: string, initial: ExerciseDraft) {
   const [entry, setEntry] = useState<{ key: string; value: ExerciseDraft } | null>(null);
   let restored = initial;
   if (raw) { try { restored = JSON.parse(raw) as ExerciseDraft; } catch { restored = initial; } }
-  const value = entry?.key === key ? entry.value : restored;
+  const savedValue = entry?.key === key ? entry.value : restored;
+  const value = { ...savedValue, reps: initial.reps.map((fallback, index) => savedValue.reps[index] ?? fallback), completed: initial.completed.map((_, index) => savedValue.completed[index] ?? false) };
   function change<K extends keyof ExerciseDraft>(field: K, next: ExerciseDraft[K] | ((old: ExerciseDraft[K]) => ExerciseDraft[K])) {
     const updated = { ...value, [field]: typeof next === 'function' ? (next as (old: ExerciseDraft[K]) => ExerciseDraft[K])(value[field]) : next };
     setEntry({ key, value: updated });
@@ -231,7 +238,7 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
   const routineLogs = state.exerciseLogs.filter((log) => log.workoutId === workoutId || (!log.workoutId && log.week === state.week && log.routine === routineId && new Date(log.date).toLocaleDateString('en-CA') === day));
   const draftKey = `base-draft:${day}:${state.week}:${routineId}:${exercise.name}`;
-  const initialDraft = { load: lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20), reps: Array(exercise.sets).fill(exercise.maxReps), completed: Array(exercise.sets).fill(false), rir: 2, pain: 0, note: '' };
+  const initialDraft = { load: lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20), reps: Array(exercise.sets).fill(exercise.maxReps), completed: Array(exercise.sets).fill(false), rir: exercisePrescription(exercise).minRir ?? 2, pain: 0, note: '' };
   const { value: draft, change, restoreCompleted } = useExerciseDraft(draftKey, initialDraft);
   const { load, reps: setReps, completed, rir, pain, note } = draft;
   const setLoad = (value: number) => change('load', value);
@@ -401,7 +408,7 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
 
 
           <div className="mt-4"><RestSettings enabled={rest.enabled} seconds={rest.seconds} disabled={!editable} onEnabledChange={value => { updateState(current => ({ ...current, restEnabled: value })); if (!value) onStopRest(); }} onSecondsChange={value => updateState(current => ({ ...current, restSeconds: value }))} /></div>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2"><RirSelector disabled={!editable} onChange={setRir} value={rir} /><PainSlider disabled={!editable} value={pain} onChange={setPain} /></div>
+          <div className="mt-5"><OptionalSection title="Sensaciones del ejercicio" summary={`RIR ${rir} · ${pain ? `molestias ${pain}/10` : 'sin molestias'}`}><div className="grid gap-5 sm:grid-cols-2"><RirSelector disabled={!editable} onChange={setRir} value={rir} /><PainSlider disabled={!editable} value={pain} onChange={setPain} /></div></OptionalSection></div>
           <div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-3.5 py-3 text-sm"><span className="flex items-center gap-2 font-medium"><StatusDot pain={pain} /> Recomendación</span><strong className="capitalize">{suggestion === 'subir' ? `subir a ${load + exercise.increment} ${exercise.unit}` : suggestion}</strong></div>
 
           <AnimatedDisclosure id="exercise-notes" open={showNotes}><textarea aria-label="Notas rápidas" className="mt-4 min-h-20 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setNote(event.target.value)} placeholder="Técnica, sensaciones..." value={note} /></AnimatedDisclosure>
@@ -442,13 +449,18 @@ function WarmupCard({ state, updateState }: { state: AppState; updateState: (upd
 }
 
 function CardioForm({ updateState }: { updateState: (updater: (state: AppState) => AppState) => void }) {
-  const [type, setType] = useState('Caminata'); const [minutes, setMinutes] = useState(0); const [steps, setSteps] = useState(0); const [rpe, setRpe] = useState(0); const [distance, setDistance] = useState(0); const [saved, setSaved] = useState(false);
+  const [type, setType] = useState('Caminata'); const [minutes, setMinutes] = useState(0); const [steps, setSteps] = useState<number | null>(null); const [rpe, setRpe] = useState(0); const [distance, setDistance] = useState<number | null>(null); const [saved, setSaved] = useState(false);
+  const [stepLength, setStepLength] = useState(70);
+  const [stepsEstimated, setStepsEstimated] = useState(false);
+  const effectiveSteps = stepsEstimated ? activityEstimates(minutes, distance ?? 0, stepLength).steps : steps;
   const isClass = ['Pilates', 'Spinning', 'Body Pump', 'Total Training'].includes(type);
-  const save = () => { if (minutes < 1) return; const log: CardioLog = { id: uid(), date: new Date().toISOString(), type, minutes, ...(!isClass && distance > 0 ? { distance } : {}), ...(!isClass && steps > 0 ? { steps } : {}), ...(rpe > 0 ? { rpe } : {}) }; updateState((state) => ({ ...state, cardioLogs: [...state.cardioLogs, log] })); setSaved(true); };
+  const save = () => { if (minutes < 1) return; const log: CardioLog = { id: uid(), date: new Date().toISOString(), type, minutes, ...(!isClass && distance !== null ? { distance } : {}), ...(!isClass && effectiveSteps !== null ? { steps: effectiveSteps, ...(stepsEstimated ? { stepsEstimated: true, stepLengthCm: stepLength } : {}) } : {}), ...(rpe > 0 ? { rpe } : {}) }; updateState((state) => ({ ...state, cardioLogs: [...state.cardioLogs, log] })); setSaved(true); };
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <label className="mb-4 block"><span className="control-label">Tipo de actividad</span><select className="mt-1 h-12 w-full rounded-xl border border-border bg-background px-3 text-sm font-semibold" onChange={(event) => { setType(event.target.value); setSaved(false); }} value={type}><optgroup label="Cardio y caminatas">{['Caminata', 'Bici', 'Elíptica'].map((item) => <option key={item}>{item}</option>)}</optgroup><optgroup label="Clases">{['Pilates', 'Spinning', 'Body Pump', 'Total Training'].map((item) => <option key={item}>{item}</option>)}</optgroup></select></label>
-      <div className="grid grid-cols-2 gap-3"><div><span className="control-label">Minutos</span><Stepper label="Minutos" value={minutes} onChange={(value) => { setMinutes(value); setSaved(false); }} step={5} min={0} /></div>{!isClass ? <><div><span className="control-label">Distancia km</span><Stepper label="Distancia en km" value={distance} onChange={(value) => { setDistance(value); setSaved(false); }} step={0.5} min={0} /></div><div><span className="control-label">Pasos</span><Stepper label="Pasos" value={steps} onChange={(value) => { setSteps(value); setSaved(false); }} step={500} min={0} /></div></> : null}<Segmented label="RPE (opcional)" value={rpe} values={[2, 4, 6, 8, 10]} onChange={(value) => { setRpe(value); setSaved(false); }} /></div>
+      <div className="space-y-5"><ActivityTypePicker value={type} onChange={value => { setType(value); setSteps(effectiveSteps); setStepsEstimated(false); setSaved(false); }} />
+      <DurationPicker value={minutes} onChange={value => { setMinutes(value); setSaved(false); }} />
+      {!isClass ? <OptionalSection title="Distancia y pasos" summary={[distance !== null ? `${distance} km` : '', effectiveSteps !== null ? `${effectiveSteps} pasos${stepsEstimated ? ' estimados' : ''}` : ''].filter(Boolean).join(' · ') || 'Añadir datos de la cinta o del reloj'}><div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2"><div><p className="control-label">Distancia</p><Stepper optional label="Distancia en km" value={distance} onChange={value => { setDistance(value); setSaved(false); }} step={0.5} suffix="km" /></div><div><p className="control-label">Pasos</p><Stepper optional label="Pasos" value={effectiveSteps} onChange={value => { setSteps(value); setStepsEstimated(false); setSaved(false); }} step={500} /></div></div><ActivityEstimates minutes={minutes} distance={distance ?? 0} walking={type === 'Caminata'} stepLength={stepLength} onStepLengthChange={value => { setStepLength(value); setSaved(false); }} estimated={stepsEstimated} onUseSteps={value => { setSteps(value); setStepsEstimated(true); setSaved(false); }} /></OptionalSection> : null}
+      <OptionalSection title="Sensaciones" summary={rpe ? `Esfuerzo ${rpe}/10` : '¿Cómo te has sentido? · opcional'}><EffortSelector value={rpe} onChange={value => { setRpe(value); setSaved(false); }} /></OptionalSection></div>
       <Button className="mt-4 h-12 w-full rounded-xl font-bold" disabled={minutes < 1 || saved} onClick={save}>{saved ? <><Check /> Guardado</> : <><Save /> Guardar actividad</>}</Button>
     </section>
   );
@@ -542,7 +554,7 @@ function PlanView({ state, updateState, onStartSession }: { state: AppState; upd
       {periodDraft ? <section className="mb-4 rounded-2xl border border-primary/40 bg-card p-4 sm:p-5">
         <div className="mb-4 flex items-center justify-between"><h2 className="font-bold">{state.periods.some((period) => period.id === periodDraft.id) ? 'Editar tramo' : 'Nuevo tramo'}</h2><Button aria-label="Cancelar" className="size-10 rounded-xl" onClick={() => setPeriodDraft(null)} size="icon" variant="ghost"><X /></Button></div>
         <label className="block"><span className="control-label">Nombre del tramo</span><input aria-label="Nombre del tramo" className="mt-1 h-12 w-full rounded-xl border border-border bg-background px-3" onChange={(event) => setPeriodDraft((current) => current ? { ...current, name: event.target.value } : current)} placeholder="Ej. Base general" value={periodDraft.name} /></label>
-        <div className="mt-4 grid grid-cols-2 items-center gap-3"><fieldset><legend className="control-label">Duración (semanas)</legend><input aria-label="Duración en semanas" className="mt-1 h-12 w-full rounded-xl border border-border bg-background px-3 font-semibold" max={52} min={1} onChange={(event) => setPeriodDraft((current) => current ? { ...current, durationWeeks: Number(event.target.value) } : current)} type="number" value={periodDraft.durationWeeks} /></fieldset><div className="mt-5 flex min-h-12 items-center gap-2 text-sm font-medium"><Checkbox id="period-deload" checked={Boolean(periodDraft.deload)} onCheckedChange={(checked) => setPeriodDraft((current) => current ? { ...current, deload: Boolean(checked) } : current)} /><label htmlFor="period-deload">Descarga</label></div></div>
+        <div className="mt-4 grid grid-cols-2 items-center gap-3"><fieldset><legend className="control-label">Duración (semanas)</legend><Stepper label="Duración en semanas" value={periodDraft.durationWeeks} min={1} onChange={value => setPeriodDraft(current => current ? { ...current, durationWeeks: Math.min(52, value) } : current)} /></fieldset><div className="mt-5 flex min-h-12 items-center gap-2 text-sm font-medium"><Checkbox id="period-deload" checked={Boolean(periodDraft.deload)} onCheckedChange={(checked) => setPeriodDraft((current) => current ? { ...current, deload: Boolean(checked) } : current)} /><label htmlFor="period-deload">Descarga</label></div></div>
         <div className="mt-4 flex gap-2">{state.periods.some((period) => period.id === periodDraft.id) ? <Button className="h-12 flex-1 rounded-xl text-red-700 hover:bg-red-500/10 dark:text-red-300" onClick={() => setConfirmDeletePeriod(true)} variant="outline"><Trash2 /> Eliminar</Button> : null}<Button className="h-12 flex-1 rounded-xl font-bold" disabled={!periodDraft.name.trim() || periodDraft.durationWeeks < 1} onClick={savePeriod}><Save /> Guardar tramo</Button></div>
       </section> : null}
 
@@ -599,29 +611,31 @@ function PlanView({ state, updateState, onStartSession }: { state: AppState; upd
 function SessionBuilder({ initialSession, onSave, onCancel }: { initialSession?: Session; onSave: (session: Session) => void; onCancel: () => void }) {
   const [name, setName] = useState(initialSession?.name ?? '');
   const [query, setQuery] = useState('');
-  const [letter, setLetter] = useState('');
-  const [page, setPage] = useState(0);
   const [picked, setPicked] = useState<Exercise[]>(initialSession?.exercises.map((exercise) => ({ ...exercise })) ?? []);
-  const results = useMemo(() => browseCatalog(query, letter, page), [query, letter, page]);
+  const sections = useMemo(() => exerciseCatalogSections(query), [query]);
+  const total = sections.reduce((count, section) => count + section.items.length, 0);
   const pickedNames = useMemo(() => new Set(picked.map((item) => item.name)), [picked]);
 
-  const add = (item: CatalogExercise) => setPicked((current) => current.some((exercise) => exercise.name === item.name) ? current : [...current, { name: item.name, catalogId: item.id, target: `3×8–12 · RIR 2–3`, sets: 3, minReps: 8, maxReps: 12, increment: 2.5, unit: 'kg' }]);
+  const add = (item: CatalogExercise) => setPicked((current) => current.some((exercise) => exercise.name === item.name) ? current : [...current, { name: item.name, catalogId: item.id, target: `3×8–12 · RIR 2–3`, sets: 3, minReps: 8, maxReps: 12, minRir: 2, maxRir: 3, increment: 2.5, unit: 'kg' }]);
   const remove = (exerciseName: string) => setPicked((current) => current.filter((exercise) => exercise.name !== exerciseName));
   const save = () => { const trimmed = name.trim(); if (!trimmed || picked.length === 0) return; onSave({ id: initialSession?.id ?? uid(), name: trimmed, exercises: picked }); };
 
   return (
-    <div>
+    <div className="session-builder">
+      <div className="session-builder-settings">
       <div className="mb-5 flex items-center gap-3"><Button aria-label="Cancelar" className="size-11 rounded-xl" onClick={onCancel} size="icon" variant="outline"><X /></Button><div><p className="eyebrow">{initialSession ? 'Editar rutina' : 'Nueva rutina'}</p><h1 className="page-title">{initialSession ? 'Editar sesión' : 'Crear sesión'}</h1></div></div>
       <input aria-label="Nombre de la sesión" className="mb-4 h-12 w-full rounded-xl border border-border bg-background px-4 text-base font-medium outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setName(event.target.value)} placeholder="Nombre (p. ej. Empuje A)" value={name} />
 
       {picked.length ? <div className="mb-4 space-y-2">{picked.map((exercise) => (
-        <div key={exercise.name} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5"><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</strong><small className="text-muted-foreground">3×8–12 · RIR 2–3</small></span><button aria-label={`Quitar ${exercise.name}`} className="grid size-9 place-items-center rounded-lg text-muted-foreground hover:text-red-600" onClick={() => remove(exercise.name)} type="button"><X className="size-4" /></button></div>
+        <div key={exercise.name} className="space-y-2 rounded-2xl border border-border bg-card p-3"><div className="flex items-center gap-3"><strong className="min-w-0 flex-1 text-sm">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</strong><button aria-label={`Quitar ${exercise.name}`} className="grid size-11 shrink-0 place-items-center rounded-xl text-muted-foreground hover:text-red-600" onClick={() => remove(exercise.name)} type="button"><X className="size-4" /></button></div><ExercisePrescriptionEditor exercise={exercise} onChange={updated => setPicked(current => current.map(item => item.name === exercise.name ? updated : item))} /></div>
       ))}</div> : null}
 
-      <div className="mb-3 flex items-center gap-2 rounded-xl border border-border bg-background px-3"><Search className="size-4 text-muted-foreground" /><input aria-label="Buscar ejercicios" className="h-11 flex-1 bg-transparent text-sm outline-none" onChange={(event) => { setQuery(event.target.value); setLetter(''); setPage(0); }} placeholder="Buscar en español o inglés…" value={query} /></div>
-      {!query ? <div aria-label="Índice alfabético de ejercicios" className="mb-3 flex gap-1.5 overflow-x-auto pb-2 scrollbar-none"><button aria-pressed={!letter} className={`min-h-10 shrink-0 rounded-lg px-3 text-sm font-bold ${!letter ? 'bg-primary text-primary-foreground' : 'border border-border bg-card'}`} onClick={() => { setLetter(''); setPage(0); }} type="button">Todos</button>{catalogLetters.map((item) => <button key={item} aria-pressed={letter === item} className={`min-h-10 min-w-10 shrink-0 rounded-lg text-sm font-bold ${letter === item ? 'bg-primary text-primary-foreground' : 'border border-border bg-card'}`} onClick={() => { setLetter(item); setPage(0); }} type="button">{item}</button>)}</div> : null}
-      <div className="mb-2 flex items-center justify-between gap-2 text-xs text-muted-foreground"><span aria-live="polite">{results.total} {results.total === 1 ? 'ejercicio' : 'ejercicios'}{query ? ` para “${query}”` : letter ? ` · ${letter}` : ''}</span><span>Página {results.page + 1} de {results.totalPages}</span></div>
-      <div className="space-y-2">{results.items.map((item) => { const added = pickedNames.has(item.name); const translated = getExerciseDisplayName(item.name, item.id); return (
+      <div className="mb-3 flex items-center gap-2 rounded-xl border border-border bg-background px-3"><Search className="size-4 text-muted-foreground" /><input aria-label="Buscar ejercicios" className="h-11 flex-1 bg-transparent text-sm outline-none" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en español o inglés…" value={query} /></div>
+
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground" aria-live="polite">{total} {total === 1 ? 'ejercicio' : 'ejercicios'}{query ? ` para “${query}”` : ''}</p>
+      {!total ? <p className="p-4 text-sm text-muted-foreground">No hay ejercicios con ese nombre. Prueba con otro término en español o inglés.</p> : null}
+      <SectionedExerciseCatalog key={query} sections={sections} renderExercise={item => { const added = pickedNames.has(item.name); const translated = getExerciseDisplayName(item.name, item.id); return (
         <div key={item.id} className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition ${added ? 'border-emerald-500/50 bg-emerald-500/7' : 'border-border bg-card'}`}>
           <ExercisePreview image={item.image} name={translated} description={item.description} compact />
           <button aria-label={`${added ? 'Añadido' : 'Añadir'}: ${translated}`} aria-disabled={added} className="flex min-h-14 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-primary" onClick={() => add(item)} type="button">
@@ -629,16 +643,16 @@ function SessionBuilder({ initialSession, onSave, onCancel }: { initialSession?:
             {added ? <Check className="size-5 shrink-0 text-emerald-600" /> : <Plus className="size-5 shrink-0 text-muted-foreground" />}
           </button>
         </div>
-      ); })}</div>
-      {!results.total ? <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">No hay ejercicios con ese nombre. Prueba con otro término en español o inglés.</p> : null}
-      {results.totalPages > 1 ? <div className="mt-4 flex items-center justify-between gap-3"><Button className="min-h-11 flex-1 rounded-xl" disabled={results.page === 0} onClick={() => setPage(results.page - 1)} variant="outline"><ChevronLeft className="size-4" /> Anterior</Button><Button className="min-h-11 flex-1 rounded-xl" disabled={results.page >= results.totalPages - 1} onClick={() => setPage(results.page + 1)} variant="outline">Siguiente <ChevronRight className="size-4" /></Button></div> : null}
-
-      <div className="sticky bottom-24 mt-5"><Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" disabled={!name.trim() || picked.length === 0} onClick={save}><Save /> {initialSession ? 'Guardar cambios' : `Crear rutina (${picked.length})`}</Button></div>
+      ); }} />
+      <div className="session-builder-actions"><Button className="h-14 w-full rounded-xl text-base font-bold shadow-sm" disabled={!name.trim() || picked.length === 0} onClick={save}><Save /> {initialSession ? 'Guardar cambios' : `Crear rutina (${picked.length})`}</Button></div>
     </div>
   );
 }
 
 function ProgressView({ editable, state, updateState }: { editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void }) {
+  const [editingActivity, setEditingActivity] = useState<CardioLog | null>(null);
+  const [deletingActivity, setDeletingActivity] = useState<CardioLog | null>(null);
+  const [showAllActivities, setShowAllActivities] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<WorkoutLog | null>(null);
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutLog | null>(null);
   const workoutKeys = new Set(state.workoutLogs.filter(countsTowardPlan).map((workout) => workout.id));
@@ -669,7 +683,10 @@ function ProgressView({ editable, state, updateState }: { editable: boolean; sta
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric icon={Dumbbell} label="Fuerza" value={`${strengthSessions}`} detail="sesiones" /><Metric icon={Timer} label="Actividad" value={`${cardioMinutes}`} detail="minutos" /><Metric icon={Footprints} label="Pasos" value={steps ? `${Math.round(steps / 1000)}k` : '0'} detail="pasos" /><Metric icon={HeartPulse} label="Sin molestias" value={`${painFree}%`} detail="ejercicios" /></div>
       <MeasurementTracker state={state} updateState={updateState} />
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="mb-6"><h2 className="font-bold">Actividad · últimos 7 días</h2><p className="text-sm text-muted-foreground">Entrenamientos, cardio, caminatas y clases</p></div>{activityDays.some((day) => day.count > 0) ? <div className="flex h-40 items-end gap-3">{activityDays.map((day) => <div key={day.key} aria-label={`${day.count} actividades`} className="flex flex-1 flex-col items-center gap-2"><div className="flex h-full w-full items-end"><div className="activity-bar w-full rounded-t-md bg-primary/75 transition-all" style={{ height: `${day.count ? Math.max(8, day.count / maxActivity * 100) : 0}%` }} /></div><span className="text-[10px] font-semibold capitalize text-muted-foreground">{day.label}</span></div>)}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Aún no hay actividad esta semana.</p>}</section>
-      {state.cardioLogs.length ? <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Actividad registrada</h2><div className="mt-3 divide-y divide-border">{[...state.cardioLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((log) => <div key={log.id} className="flex min-h-14 items-center justify-between gap-3 py-2"><div className="min-w-0"><strong className="block truncate text-sm">{log.type}</strong><small className="text-muted-foreground">{new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(log.date))}</small></div><span className="shrink-0 text-sm font-semibold tabular-nums">{log.minutes} min</span></div>)}</div></section> : null}
+      {state.cardioLogs.length ? <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Actividad registrada</h2><div className="mt-3 space-y-2">{[...state.cardioLogs].sort((a, b) => b.date.localeCompare(a.date)).slice(0, showAllActivities ? undefined : 5).map(log => {
+        const estimate = activityEstimates(log.minutes, log.distance ?? 0);
+        return <details key={log.id} className="rounded-xl border border-border bg-background"><summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-3"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Wind className="size-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{log.type}</strong><small className="text-muted-foreground">{new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(log.date))}</small></span><span className="shrink-0 text-sm font-semibold tabular-nums">{log.minutes} min</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></summary><div className="space-y-3 border-t border-border p-3"><div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{log.distance ? <><span>{log.distance} km</span><span>{formatPace(estimate.paceSeconds)} min/km</span></> : null}{log.steps ? <span>{log.steps.toLocaleString('es-ES')} pasos{log.stepsEstimated ? ' estimados' : ''}</span> : null}{log.rpe ? <span>Esfuerzo {log.rpe}/10</span> : null}{log.heartRate ? <span>{log.heartRate} bpm</span> : null}</div><div className="flex gap-2 border-t border-border pt-3"><Button className="min-h-11 flex-1 rounded-xl" onClick={() => setEditingActivity(log)} variant="outline"><Pencil className="size-4" /> Editar</Button><Button className="min-h-11 rounded-xl text-red-700 dark:text-red-300" onClick={() => setDeletingActivity(log)} variant="outline"><Trash2 className="size-4" /> Borrar</Button></div></div></details>;
+      })}</div>{state.cardioLogs.length > 5 ? <Button className="mt-3 min-h-11 w-full rounded-xl" variant="ghost" onClick={() => setShowAllActivities(value => !value)}>{showAllActivities ? 'Ver menos' : `Ver todas (${state.cardioLogs.length})`}</Button> : null}</section> : null}
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Plan completado</h2><div className="mt-5 flex items-center gap-4"><ProgressRing className="size-20 text-lg" value={planStatus.total ? planStatus.done / planStatus.total * 100 : 0} label={`${planStatus.total ? Math.round(planStatus.done / planStatus.total * 100) : 0}%`} description="Plan completado" /><div><strong>{planStatus.done} de {planStatus.total} sesiones</strong><p className="mt-1 text-xs text-muted-foreground">{totalWeeks ? `Semana activa ${state.week} de ${totalWeeks} · ${activeWeek?.block ?? ''}` : 'Crea un plan para ver tu progresión.'}</p></div></div></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex items-center justify-between"><div><h2 className="font-bold">Historial de entrenamientos</h2><p className="text-sm text-muted-foreground">Sesiones que has finalizado</p></div><span className="rounded-lg bg-muted px-2.5 py-1 text-xs font-bold tabular-nums">{state.workoutLogs.length}</span></div>
@@ -680,6 +697,8 @@ function ProgressView({ editable, state, updateState }: { editable: boolean; sta
           return <details key={workout.id} className="rounded-xl border border-border bg-background"><summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 p-3"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary"><Dumbbell className="size-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate">{workout.routineName}</strong><small className="text-muted-foreground">{dateLabel} · Semana {workout.week}</small></span><span className="text-right text-xs font-semibold text-muted-foreground">{completed}/{workout.exercises.length}<small className="block">hechos{partial ? ` · ${partial} parciales` : ''}</small></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></summary><div className="space-y-2 border-t border-border p-3"><ul className="space-y-1">{workout.exercises.map((item) => <li key={item.name} className="flex items-center justify-between gap-3 text-sm"><span>{item.name}</span><span className={item.status === 'done' ? 'text-emerald-700 dark:text-emerald-300' : item.status === 'partial' ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}>{item.status === 'done' ? 'Completado' : item.status === 'partial' ? 'Parcial' : item.status === 'skipped' ? 'No completado' : 'Pendiente'}</span></li>)}</ul>{workout.notes ? <p className="rounded-lg bg-muted p-3 text-sm">{workout.notes}</p> : null}<div className="flex gap-2 border-t border-border pt-3"><Button className="min-h-11 flex-1 rounded-xl" onClick={() => setEditingWorkout(workout)} variant="outline"><Pencil className="size-4" /> Editar</Button><Button className="min-h-11 rounded-xl text-red-700 dark:text-red-300" onClick={() => setDeletingWorkout(workout)} variant="outline"><Trash2 className="size-4" /> Borrar</Button></div></div></details>;
         })}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">Al finalizar una sesión desde “Hoy”, aparecerá aquí junto con sus ejercicios y estado.</p>}
       </section>
+      {editingActivity ? <ActivityHistoryEditor key={editingActivity.id} activity={editingActivity} editable={editable && state.cardioLogs.some(log => log.id === editingActivity.id)} dark={state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)} onSave={edited => updateState(current => applyActivityEdit(current, editingActivity.id, edited))} onClose={() => setEditingActivity(null)} onDelete={() => { setDeletingActivity(editingActivity); setEditingActivity(null); }} /> : null}
+      {deletingActivity ? <ActivityDeleteDialog editable={editable} dark={state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)} onClose={() => setDeletingActivity(null)} onConfirm={() => { updateState(current => deleteActivity(current, deletingActivity.id)); setDeletingActivity(null); }} /> : null}
       {editingWorkout ? <WorkoutHistoryEditor editable={editable} key={editingWorkout.id} state={state} workout={editingWorkout} onSave={updateState} onClose={() => setEditingWorkout(null)} /> : null}
       <Dialog open={Boolean(deletingWorkout)} onOpenChange={(open) => { if (!open) setDeletingWorkout(null); }}><DialogContent><DialogTitle>¿Borrar este entrenamiento?</DialogTitle><DialogDescription>Se eliminará esta sesión y los registros de ejercicios vinculados. No se puede deshacer.</DialogDescription><div className="mt-4 flex justify-end gap-2"><Button onClick={() => setDeletingWorkout(null)} variant="outline">Cancelar</Button><Button className="bg-red-600 text-white hover:bg-red-700" onClick={deleteWorkout}><Trash2 /> Borrar</Button></div></DialogContent></Dialog>
     </div>

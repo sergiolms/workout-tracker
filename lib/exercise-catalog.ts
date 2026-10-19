@@ -113,3 +113,18 @@ export function browseCatalog(query: string, letter: string, page: number, pageS
 export function searchCatalog(query: string, limit = 40): CatalogExercise[] {
   return browseCatalog(query, '', 0, limit).items;
 }
+
+/** One continuous catalogue; alphabet navigation never removes other sections. */
+export function exerciseCatalogSections(query = '') {
+  const tokens = normalizeExerciseSearch(query).split(/\s+/).filter(Boolean);
+  const sections = new Map<string, CatalogExercise[]>();
+  for (const { item, spanishName, search } of indexedCatalog) {
+    if (!tokens.every(token => search.includes(token))) continue;
+    const initial = normalizeExerciseSearch(spanishName).charAt(0).toUpperCase();
+    const letter = /^[A-Z]$/.test(initial) ? initial : '#';
+    const items = sections.get(letter) ?? [];
+    items.push(item);
+    sections.set(letter, items);
+  }
+  return [...sections].map(([letter, items]) => ({ letter, items }));
+}

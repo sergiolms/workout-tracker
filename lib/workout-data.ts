@@ -7,6 +7,8 @@ export type Exercise = {
   minReps: number;
   maxReps: number;
   increment: number;
+  minRir?: number;
+  maxRir?: number;
   unit?: string;
   catalogId?: string;
   description?: string;

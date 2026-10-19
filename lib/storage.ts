@@ -4,7 +4,7 @@ export type SetLog = { reps: number; done: boolean };
 export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
 export type WorkoutExerciseStatus = 'done' | 'partial' | 'skipped' | 'pending';
 export type WorkoutLog = { id: string; date: string; week: number; routine: string; routineName: string; exercises: Array<{ name: string; status: WorkoutExerciseStatus; logId?: string }>; notes: string };
-export type CardioLog = { id: string; date: string; type: string; minutes: number; distance?: number; steps?: number; rpe?: number; heartRate?: number };
+export type CardioLog = { id: string; date: string; type: string; minutes: number; distance?: number; steps?: number; stepsEstimated?: boolean; stepLengthCm?: number; rpe?: number; heartRate?: number };
 export type Measurement = { id: string; date: string; weight?: number; waist?: number; restingHr?: number; sleep?: number; energy?: number; pain?: number };
 
 export type Session = { id: string; name: string; exercises: Exercise[] };
