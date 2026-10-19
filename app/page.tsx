@@ -20,6 +20,7 @@ import { mobility, warmup, type Exercise } from '@/lib/workout-data';
 import { BASE_SESSION_IDS, backupLocalState, clearAppLocalData, defaultState, loadLocalState, saveLocalState, weeksFromPeriods, type AppState, type CardioLog, type ExerciseLog, type PlanPeriod, type Session, type WorkoutLog } from '@/lib/storage';
 
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
+import { appRelease } from '@/lib/app-version';
 
 type Tab = 'today' | 'plan' | 'timers' | 'progress' | 'mobility' | 'profile';
 
@@ -702,6 +703,7 @@ function ProfileView({ editable, state, updateState, user, cloudReady, authBusy,
       </section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="icon-tile">{user && cloudReady ? <Cloud /> : <CloudOff />}</span><div><strong className="block">Sincronización</strong><small className="text-muted-foreground">{user && cloudReady ? 'Sincronizado con la cuenta activa' : user ? 'Firebase pendiente · copia local disponible' : firebaseConfigured ? 'Solo en este dispositivo hasta iniciar sesión' : 'Sincronización no disponible'}</small></div></div><span className={`size-2.5 rounded-full ${user && cloudReady ? 'bg-emerald-500' : 'bg-amber-400'}`} /></div></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Copia local</h2><p className="mt-2 text-sm text-muted-foreground">Firebase guarda tu plan y tu historial. Este navegador conserva una copia para consultarlos sin conexión. Para guardar cambios necesitas conexión.</p><p className="mt-2 text-sm">{state.plan.length} semanas · {state.sessions.length} rutinas · {state.workoutLogs.length} entrenamientos</p><Button className="mt-4 min-h-12 rounded-xl" onClick={exportBackup} variant="outline"><Download /> Descargar copia de seguridad</Button></section>
+      <section aria-labelledby="app-version-title" className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 id="app-version-title" className="font-bold">Versión de la app</h2><p className="mt-2 text-sm font-semibold">v{appRelease.version}<span className="font-normal text-muted-foreground"> · {appRelease.build}</span></p><p className="mt-1 text-sm text-muted-foreground">Fecha de versión: <time dateTime={appRelease.builtAt}>{appRelease.date}</time> (Madrid)</p></section>
     </div>
   );
 }

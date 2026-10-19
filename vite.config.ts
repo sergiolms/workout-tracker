@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
+import { version } from './package.json';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
@@ -34,7 +35,7 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ command }) => {
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= 'false';
@@ -44,7 +45,20 @@ export default defineConfig(async () => {
   // Wrangler snapshots its log path while the Cloudflare plugin is imported.
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
+  const builtAt = new Date();
+  const release = {
+    version,
+    build: process.env.GITHUB_RUN_NUMBER
+      ? `revisión ${process.env.GITHUB_RUN_NUMBER}.${process.env.GITHUB_RUN_ATTEMPT ?? '1'}`
+      : command === 'serve' ? 'desarrollo' : 'compilación local',
+    builtAt: builtAt.toISOString(),
+    date: new Intl.DateTimeFormat('es-ES', {
+      dateStyle: 'medium', timeStyle: 'short', timeZone: 'Europe/Madrid',
+    }).format(builtAt),
+  };
+
   return {
+    define: { __APP_RELEASE__: JSON.stringify(release) },
     css: { postcss: { plugins: [tailwindcss()] } },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
