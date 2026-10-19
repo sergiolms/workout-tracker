@@ -182,7 +182,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary);
   }
 
   .set-grid {
-    @apply grid grid-cols-[34px_1fr_52px] items-center gap-2;
+    @apply grid grid-cols-[34px_minmax(0,1fr)_52px] items-center gap-2;
   }
 
   .set-grid-header {
@@ -211,5 +211,23 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary);
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  button, [role="button"], summary {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: manipulation;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button, [role="button"], summary {
+    transition: scale 120ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out;
+  }
+  button:active:not(:disabled), [role="button"]:active:not([aria-disabled="true"]), summary:active {
+    scale: 0.96;
   }
 }

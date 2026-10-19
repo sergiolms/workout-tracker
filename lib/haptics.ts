@@ -1,5 +1,5 @@
 export type HapticKind = 'tap' | 'success' | 'warning';
-const patterns: Record<HapticKind, number | number[]> = { tap: 10, success: [15, 25, 20], warning: 25 };
+const patterns: Record<HapticKind, number | number[]> = { tap: 20, success: [15, 25, 20], warning: 25 };
 let lastFeedback = 0;
 
 export function hapticFeedback(kind: HapticKind = 'tap'): boolean {

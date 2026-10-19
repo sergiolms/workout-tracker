@@ -23,7 +23,9 @@ import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { appRelease } from '@/lib/app-version';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
-import { hapticFeedback, type HapticKind } from '@/lib/haptics';
+import { HapticCheck } from '@/components/haptic-check';
+import { Stepper } from '@/components/number-stepper';
+import { useInteractionFeedback } from '@/hooks/use-interaction-feedback';
 
 type Tab = 'today' | 'plan' | 'timers' | 'progress' | 'mobility' | 'profile';
 
@@ -39,15 +41,6 @@ const today = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric'
 const localDateKey = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-function Stepper({ value, onChange, step = 1, min = 0, suffix }: { value: number; onChange: (value: number) => void; step?: number; min?: number; suffix?: string }) {
-  return (
-    <div className="flex h-12 items-center rounded-xl border border-border bg-background">
-      <button aria-label="Reducir" className="grid h-full w-11 place-items-center text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => onChange(Math.max(min, value - step))} type="button">−</button>
-      <span className="min-w-12 flex-1 text-center text-base font-bold tabular-nums">{value}<small className="ml-1 font-medium text-muted-foreground">{suffix}</small></span>
-      <button aria-label="Aumentar" className="grid h-full w-11 place-items-center text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => onChange(value + step)} type="button">+</button>
-    </div>
-  );
-}
 
 function Segmented({ value, values, onChange, label, pain = false }: { value: number; values: number[]; onChange: (value: number) => void; label: string; pain?: boolean }) {
   return (
@@ -205,7 +198,7 @@ function WorkoutTimer() {
       <div className="p-4">
         <div className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1">{(['descanso','amrap','hiit','libre'] as TimerMode[]).map(item => <button key={item} aria-pressed={mode === item} className={`min-h-11 rounded-lg text-xs font-bold ${mode === item ? 'bg-card shadow-sm' : ''}`} onClick={() => { reset(); setMode(item); setDuration(item === 'amrap' ? 600 : 90); }}>{item === 'libre' ? 'Crono' : item.toUpperCase()}</button>)}</div>
         <fieldset disabled={running || elapsed > 0} className="mt-3 disabled:opacity-50">
-          {mode === 'hiit' ? <div className="grid gap-2">{[['Trabajo (s)', work, setWork, 5], ['Descanso (s)', rest, setRest, 5], ['Rondas', rounds, setRounds, 1]].map(([label, value, setter, step]) => <div key={String(label)} className="grid grid-cols-[1fr_150px] items-center gap-2"><span className="text-sm">{String(label)}</span><Stepper value={Number(value)} onChange={setter as (value: number) => void} step={Number(step)} min={Number(step)} /></div>)}</div> : mode !== 'libre' ? <div className="flex gap-2">{(mode === 'amrap' ? [300,600,900,1200] : [60,90,120]).map(seconds => <button key={seconds} aria-pressed={duration === seconds} onClick={() => setDuration(seconds)} className={`min-h-11 flex-1 rounded-xl border text-sm font-bold ${duration === seconds ? 'border-primary bg-primary/10' : 'border-border'}`}>{mode === 'amrap' ? `${seconds / 60} min` : `${seconds}s`}</button>)}</div> : null}
+          {mode === 'hiit' ? <div className="grid gap-2">{[['Trabajo (s)', work, setWork, 5], ['Descanso (s)', rest, setRest, 5], ['Rondas', rounds, setRounds, 1]].map(([label, value, setter, step]) => <div key={String(label)} className="grid grid-cols-[1fr_150px] items-center gap-2"><span className="text-sm">{String(label)}</span><Stepper label={String(label)} value={Number(value)} onChange={setter as (value: number) => void} step={Number(step)} min={Number(step)} /></div>)}</div> : mode !== 'libre' ? <div className="flex gap-2">{(mode === 'amrap' ? [300,600,900,1200] : [60,90,120]).map(seconds => <button key={seconds} aria-pressed={duration === seconds} onClick={() => setDuration(seconds)} className={`min-h-11 flex-1 rounded-xl border text-sm font-bold ${duration === seconds ? 'border-primary bg-primary/10' : 'border-border'}`}>{mode === 'amrap' ? `${seconds / 60} min` : `${seconds}s`}</button>)}</div> : null}
         </fieldset>
         <div className="mt-4 flex items-center gap-3"><div className="flex-1"><p role="timer" className="text-4xl font-bold tabular-nums">{formatClock(remaining)}</p><p className="mt-1 text-xs font-semibold text-muted-foreground">{phase}</p></div><Button aria-label={running ? 'Pausar temporizador' : 'Iniciar temporizador'} className="size-14 rounded-full" onClick={toggle} size="icon">{running ? <Pause /> : <Play />}</Button><Button aria-label="Reiniciar temporizador" className="size-12 rounded-full" onClick={reset} size="icon" variant="outline"><RotateCcw /></Button></div>
         <p className="mt-3 text-xs text-muted-foreground">Mantén la app visible para recibir el aviso al terminar.</p>
@@ -364,14 +357,14 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
         </div>
 
         <div className="p-4 sm:p-5">
-          {exercise.unit !== 'reps' ? <div className="mb-5"><p className="control-label">Carga para todas las series</p><Stepper value={load} onChange={setLoad} step={exercise.increment} suffix={exercise.unit} /></div> : null}
+          {exercise.unit !== 'reps' ? <div className="mb-5"><p className="control-label">Carga para todas las series</p><Stepper label={`Carga de ${exercise.name}`} value={load} onChange={setLoad} step={exercise.unit === 'kg' ? 0.5 : exercise.increment} suffix={exercise.unit} /></div> : null}
           <div className="mb-3 flex items-center justify-between gap-3"><span className="control-label">Series</span><Button className="min-h-11 rounded-xl" data-haptic="success" variant="outline" aria-pressed={completed.length > 0 && completed.every(Boolean)} onClick={() => setCompleted((current) => current.map(() => !current.every(Boolean)))}><Check className="size-4" />{completed.every(Boolean) ? 'Desmarcar todas' : 'Marcar todas'}</Button></div>
           <div className="set-grid set-grid-header"><span>Serie</span><span>Repeticiones</span><span>Hecho</span></div>
           <div className="space-y-2.5">
             {setReps.map((reps, index) => (
               <div key={index} className="set-grid">
                 <span className="text-center text-sm font-bold text-muted-foreground">{index + 1}</span>
-                <Stepper value={reps} onChange={(value) => setSetReps((current) => current.map((item, itemIndex) => itemIndex === index ? value : item))} />
+                <Stepper label={`Repeticiones, serie ${index + 1}`} value={reps} onChange={(value) => setSetReps((current) => current.map((item, itemIndex) => itemIndex === index ? value : item))} />
                 <button aria-label={`Marcar serie ${index + 1} como ${completed[index] ? 'pendiente' : 'hecha'}`} aria-pressed={completed[index]} className={`grid size-12 place-items-center justify-self-end rounded-xl border transition active:scale-95 ${completed[index] ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-border bg-background text-muted-foreground'}`} onClick={() => setCompleted((current) => current.map((item, itemIndex) => itemIndex === index ? !item : item))} type="button"><Check className="size-5" strokeWidth={3} /></button>
               </div>
             ))}
@@ -423,7 +416,7 @@ function CardioForm({ updateState }: { updateState: (updater: (state: AppState) 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <label className="mb-4 block"><span className="control-label">Tipo de actividad</span><select className="mt-1 h-12 w-full rounded-xl border border-border bg-background px-3 text-sm font-semibold" onChange={(event) => { setType(event.target.value); setSaved(false); }} value={type}><optgroup label="Cardio y caminatas">{['Caminata', 'Bici', 'Elíptica'].map((item) => <option key={item}>{item}</option>)}</optgroup><optgroup label="Clases">{['Pilates', 'Spinning', 'Body Pump', 'Total Training'].map((item) => <option key={item}>{item}</option>)}</optgroup></select></label>
-      <div className="grid grid-cols-2 gap-3"><div><span className="control-label">Minutos</span><Stepper value={minutes} onChange={(value) => { setMinutes(value); setSaved(false); }} step={5} min={0} /></div>{!isClass ? <><div><span className="control-label">Distancia km</span><Stepper value={distance} onChange={(value) => { setDistance(value); setSaved(false); }} step={0.5} min={0} /></div><div><span className="control-label">Pasos</span><Stepper value={steps} onChange={(value) => { setSteps(value); setSaved(false); }} step={500} min={0} /></div></> : null}<Segmented label="RPE (opcional)" value={rpe} values={[2, 4, 6, 8, 10]} onChange={(value) => { setRpe(value); setSaved(false); }} /></div>
+      <div className="grid grid-cols-2 gap-3"><div><span className="control-label">Minutos</span><Stepper label="Minutos" value={minutes} onChange={(value) => { setMinutes(value); setSaved(false); }} step={5} min={0} /></div>{!isClass ? <><div><span className="control-label">Distancia km</span><Stepper label="Distancia en km" value={distance} onChange={(value) => { setDistance(value); setSaved(false); }} step={0.5} min={0} /></div><div><span className="control-label">Pasos</span><Stepper label="Pasos" value={steps} onChange={(value) => { setSteps(value); setSaved(false); }} step={500} min={0} /></div></> : null}<Segmented label="RPE (opcional)" value={rpe} values={[2, 4, 6, 8, 10]} onChange={(value) => { setRpe(value); setSaved(false); }} /></div>
       <Button className="mt-4 h-12 w-full rounded-xl font-bold" disabled={minutes < 1 || saved} onClick={save}>{saved ? <><Check /> Guardado</> : <><Save /> Guardar actividad</>}</Button>
     </section>
   );
@@ -695,7 +688,7 @@ function ProfileView({ editable, state, updateState, user, cloudReady, authBusy,
   return (
     <div><div className="section-heading"><div><h1 className="page-title">Perfil</h1><p className="mt-1 text-sm text-muted-foreground">Cuenta y apariencia</p></div></div>
       <section className="mb-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Apariencia</h2><p className="mt-1 text-sm text-muted-foreground">Elige cómo se muestra la aplicación.</p><fieldset className="mt-4"><legend className="sr-only">Tema de la aplicación</legend><div className="grid grid-cols-3 gap-2">{([{ id: 'system', label: 'Sistema', icon: Monitor }, { id: 'light', label: 'Claro', icon: Sun }, { id: 'dark', label: 'Oscuro', icon: Moon }] as const).map(({ id, label, icon: Icon }) => <button key={id} disabled={!editable} aria-pressed={state.theme === id} className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-2 text-sm font-semibold transition-colors ${state.theme === id ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-foreground hover:bg-muted'}`} onClick={() => updateState((current) => ({ ...current, theme: id }))} type="button"><Icon className="size-4" />{label}</button>)}</div></fieldset></section>
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><label className="flex min-h-12 cursor-pointer items-center justify-between gap-4"><span><strong className="block">Vibración al interactuar</strong><span className="mt-1 block text-sm text-muted-foreground">Vibraciones suaves al marcar, navegar y guardar, si tu dispositivo y navegador lo permiten.</span></span><Checkbox aria-label="Vibración al interactuar" checked={state.haptics !== false} disabled={!editable} onCheckedChange={(checked) => updateState((current) => ({ ...current, haptics: Boolean(checked) }))} /></label></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><label htmlFor="interaction-haptics" className="flex min-h-12 cursor-pointer items-center justify-between gap-4"><span><strong className="block">Vibración al interactuar</strong><span className="mt-1 block text-sm text-muted-foreground">Vibraciones suaves al marcar, navegar y guardar, si tu dispositivo y navegador lo permiten.</span></span><Checkbox id="interaction-haptics" aria-label="Vibración al interactuar" checked={state.haptics !== false} disabled={!editable} onCheckedChange={(checked) => updateState((current) => ({ ...current, haptics: Boolean(checked) }))} /></label><HapticCheck enabled={state.haptics !== false} /></section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5">
         {user ? <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">{(user.displayName || user.email || 'U').slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><strong className="block truncate">{user.displayName || 'Cuenta de Google'}</strong><small className="block truncate text-muted-foreground">{user.email}</small></div><Button aria-label="Cerrar sesión" className="size-11 rounded-xl" disabled={authBusy} onClick={onLogout} size="icon" variant="outline"><LogOut /></Button></div> : <div><div className="mb-4 flex gap-3"><span className="icon-tile"><Cloud /></span><div><strong className="block">Cuenta</strong><small className="text-muted-foreground">Inicia sesión para sincronizar entre dispositivos.</small></div></div><Button className="h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50" disabled={authBusy || !firebaseConfigured} onClick={onGoogleLogin}><span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">G</span>{authBusy ? 'Conectando…' : 'Continuar con Google'}</Button>{authError ? <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{authError}</p> : null}</div>}
       </section>
@@ -723,18 +716,7 @@ export default function HomePage() {
   const persistence = useRef<WorkoutPersistence | null>(null);
   const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>({ local: 'saved', cloud: 'pending', canEdit: false, error: '' });
 
-  useEffect(() => {
-    if (state.haptics === false) return;
-    const onInteraction = (event: MouseEvent) => {
-      if (!event.isTrusted || !(event.target instanceof Element)) return;
-      const control = event.target.closest<HTMLElement>('button, [role="button"], [role="checkbox"], summary, input[type="checkbox"]');
-      if (!control || control.matches(':disabled, [aria-disabled="true"]')) return;
-      const kind = control.dataset.haptic;
-      hapticFeedback(kind === 'success' || kind === 'warning' ? kind as HapticKind : 'tap');
-    };
-    document.addEventListener('click', onInteraction, true);
-    return () => document.removeEventListener('click', onInteraction, true);
-  }, [state.haptics]);
+  useInteractionFeedback(state.haptics !== false);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -930,7 +912,7 @@ export default function HomePage() {
             {tab === 'timers' ? <div className="section-heading"><div><p className="eyebrow">Herramientas de entrenamiento</p><h1 className="page-title">Temporizadores</h1></div></div> : null}
             <div className={tab === 'timers' ? '' : 'hidden'}><WorkoutTimer /></div>
             {persistenceStatus.error ? <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{persistenceStatus.local === 'error' ? 'No se ha podido guardar en este dispositivo.' : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'} <span className="block text-xs">{persistenceStatus.error}</span></p> : null}
-            {!persistenceStatus.canEdit && !persistenceStatus.error ? <p role="status" className="mb-4 text-sm text-muted-foreground">Conectando con Firebase. La copia local se muestra en modo lectura.</p> : null}
+            {!persistenceStatus.canEdit && !persistenceStatus.error ? <output className="mb-4 block text-sm text-muted-foreground">Conectando con Firebase. La copia local se muestra en modo lectura.</output> : null}
             <fieldset disabled={!persistenceStatus.canEdit && tab !== 'profile'} className="min-w-0">
             {tab === 'timers' ? null : tab === 'profile' ? <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} /> : content}
             </fieldset>
