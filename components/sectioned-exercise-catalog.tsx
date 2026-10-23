@@ -1,21 +1,30 @@
 'use client';
 
-import { useRef, useState, type ReactNode } from 'react';
+import { memo, useRef, useState, type ReactNode } from 'react';
 import { AlphabetWheel } from './alphabet-wheel';
 import type { CatalogExercise } from '@/lib/exercise-catalog';
 
-const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const alphabet = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 
 export type ExerciseSection = { letter: string; items: CatalogExercise[] };
 
-export function SectionedExerciseCatalog({ sections, renderExercise }: { sections: ExerciseSection[]; renderExercise: (exercise: CatalogExercise) => ReactNode }) {
+type CatalogProps = { sections: ExerciseSection[]; renderExercise: (exercise: CatalogExercise) => ReactNode };
+
+const CatalogSections = memo(function CatalogSections({ sections, renderExercise }: CatalogProps) {
+  return sections.map(section => <section key={section.letter} data-catalog-section={section.letter} aria-label={`Sección ${section.letter}`} className="catalog-letter-section">
+    <h2 className="mb-2 text-lg font-bold text-primary">{section.letter}</h2>
+    <div className="space-y-2">{section.items.map(item => <div key={item.id}>{renderExercise(item)}</div>)}</div>
+  </section>);
+});
+
+export function SectionedExerciseCatalog({ sections, renderExercise }: CatalogProps) {
   const list = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(sections.find(section => alphabet.includes(section.letter))?.letter ?? 'A');
   const navigate = (letter: string) => {
     const viewport = list.current;
-    if (letter === 'A' && viewport) {
+    if (letter === sections[0]?.letter && viewport) {
       viewport.scrollTo({ top: 0, behavior: 'instant' });
-      setActive('A');
+      setActive(letter);
       return;
     }
     const section = viewport?.querySelector<HTMLElement>(`[data-catalog-section="${letter}"]`);
@@ -33,13 +42,10 @@ export function SectionedExerciseCatalog({ sections, renderExercise }: { section
         const atEnd = viewport.scrollTop >= viewport.scrollHeight - viewport.clientHeight - 1;
         const headings = [...viewport.querySelectorAll<HTMLElement>('[data-catalog-section]')];
         const current = atEnd ? headings.at(-1) : headings.findLast(section => section.offsetTop <= viewport.scrollTop + 1);
-        if (current) setActive(current.dataset.catalogSection === '#' ? 'A' : current.dataset.catalogSection ?? 'A');
+        if (current) setActive(current.dataset.catalogSection ?? sections[0]?.letter ?? 'A');
       }}>
-      {sections.map(section => <section key={section.letter} data-catalog-section={section.letter} aria-label={`Sección ${section.letter}`} className="catalog-letter-section">
-        <h2 className="mb-2 text-lg font-bold text-primary">{section.letter}</h2>
-        <div className="space-y-2">{section.items.map(item => <div key={item.id}>{renderExercise(item)}</div>)}</div>
-      </section>)}
+      <CatalogSections sections={sections} renderExercise={renderExercise} />
     </section>
-    {sections.length > 0 ? <aside className="flex items-center justify-end"><AlphabetWheel letters={alphabet} availableLetters={sections.map(section => section.letter === '#' ? 'A' : section.letter)} value={active} onChange={navigate} /></aside> : null}
+    {sections.length > 0 ? <aside className="flex items-center justify-end"><AlphabetWheel letters={alphabet} availableLetters={sections.map(section => section.letter)} value={active} onChange={navigate} /></aside> : null}
   </div>;
 }

@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-type NavigationItem<T extends string> = { id: T; label: string; icon: LucideIcon };
+type NavigationItem<T extends string> = { id: T; label: string; icon: LucideIcon; featured?: boolean };
 
 export function LiquidNavigation<T extends string>({ items, active, onSelect, label = 'Navegación principal' }: { items: NavigationItem<T>[]; active: T; onSelect: (id: T) => void; label?: string }) {
   const root = useRef<HTMLElement>(null);
@@ -11,6 +11,7 @@ export function LiquidNavigation<T extends string>({ items, active, onSelect, la
   const previous = useRef<{ left: number; width: number } | null>(null);
   const running = useRef<Animation | null>(null);
   const activeIndex = items.findIndex((item) => item.id === active);
+  const featuredActive = items[activeIndex]?.featured === true;
 
   useLayoutEffect(() => {
     const element = indicator.current;
@@ -52,7 +53,7 @@ export function LiquidNavigation<T extends string>({ items, active, onSelect, la
   useLayoutEffect(() => () => { running.current?.cancel(); }, []);
 
   return <nav ref={root} aria-label={label} data-feedback="flow" className="liquid-nav" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, '--nav-count': items.length } as CSSProperties}>
-    <span ref={indicator} aria-hidden="true" className="liquid-nav-indicator" style={{ left: `calc(${(Math.max(0, activeIndex) + .5) / items.length * 100}% - var(--nav-pill-width) / 2)`, opacity: activeIndex >= 0 ? 1 : 0 }} />
-    {items.map(({ id, label: itemLabel, icon: Icon }) => <button key={id} aria-current={active === id ? 'page' : undefined} className={`nav-button ${active === id ? 'text-primary' : 'text-muted-foreground'}`} onClick={() => onSelect(id)} type="button"><Icon className="size-5" strokeWidth={active === id ? 2.7 : 2} />{itemLabel}</button>)}
+    <span ref={indicator} aria-hidden="true" className="liquid-nav-indicator" style={{ left: `calc(${(Math.max(0, activeIndex) + .5) / items.length * 100}% - var(--nav-pill-width) / 2)`, opacity: activeIndex >= 0 && !featuredActive ? 1 : 0 }} />
+    {items.map(({ id, label: itemLabel, icon: Icon, featured }) => <button key={id} aria-current={active === id ? 'page' : undefined} data-featured={featured || undefined} className="nav-button" onClick={() => onSelect(id)} type="button"><span className="nav-icon"><Icon className={featured ? 'size-7' : 'size-6'} strokeWidth={active === id ? 2.5 : 2} /></span><span className="nav-label">{itemLabel}</span></button>)}
   </nav>;
 }

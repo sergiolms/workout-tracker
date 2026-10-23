@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Home, CalendarDays, Timer, BarChart3, Footprints } from 'lucide-react';
+import { Dumbbell, CalendarDays, Timer, BarChart3, Footprints } from 'lucide-react';
 import { LiquidNavigation } from '@/components/liquid-navigation';
 import { MotionSurface, AnimatedDisclosure } from '@/components/motion-surface';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 
-const items = [{ id: 'today', label: 'Hoy', icon: Home }, { id: 'plan', label: 'Plan', icon: CalendarDays }, { id: 'timers', label: 'Timer', icon: Timer }, { id: 'progress', label: 'Progreso', icon: BarChart3 }, { id: 'mobility', label: 'Movilidad', icon: Footprints }];
+const items = [{ id: 'plan', label: 'Plan', icon: CalendarDays }, { id: 'progress', label: 'Progreso', icon: BarChart3 }, { id: 'today', label: 'Hoy', icon: Dumbbell, featured: true }, { id: 'timers', label: 'Timer', icon: Timer }, { id: 'mobility', label: 'Movilidad', icon: Footprints }];
 const meta = { title: 'Navegación/Movimiento', parameters: { docs: { description: { component: 'Menú con indicador elástico, paneles y navegación táctil. Los gestos no actúan sobre controles ni sobre los bordes del navegador.' } } } } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -13,7 +13,7 @@ export const MenuFluido: Story = { render: function Menu() {
   const [active, setActive] = useState('today');
   const [direction, setDirection] = useState<-1 | 0 | 1>(0);
   const swipe = useSwipeNavigation({ views: items.map(item => item.id), active, onNavigate: (id, side) => { setDirection(side); setActive(id); } });
-  return <div className="mx-auto flex h-[min(640px,85dvh)] max-w-lg flex-col overflow-hidden rounded-2xl border border-border"><div {...swipe} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6"><MotionSurface motionKey={active} direction={direction}><p className="eyebrow">Vista de prueba</p><h1 className="text-2xl font-bold">{items.find(item => item.id === active)?.label}</h1><p className="mt-4 text-sm text-muted-foreground">Toca las pestañas o desliza horizontalmente sobre este contenido desde un dispositivo táctil.</p></MotionSurface></div><div className="shrink-0 border-t border-border bg-card p-2"><LiquidNavigation items={items} active={active} onSelect={id => { setDirection(0); setActive(id); }} /></div></div>;
+  return <div className="mx-auto flex h-[min(640px,85dvh)] max-w-lg flex-col overflow-hidden rounded-2xl border border-border"><div {...swipe} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6"><MotionSurface motionKey={active} direction={direction}><p className="eyebrow">Vista de prueba</p><h1 className="text-2xl font-bold">{items.find(item => item.id === active)?.label}</h1><p className="mt-4 text-sm text-muted-foreground">Toca las pestañas o desliza horizontalmente sobre este contenido desde un dispositivo táctil.</p></MotionSurface></div><div className="bottom-nav"><LiquidNavigation items={items} active={active} onSelect={id => { setDirection(0); setActive(id); }} /></div></div>;
 } };
 export const Desplegable: Story = { render: function Disclosure() {
   const [open, setOpen] = useState(false);

@@ -1,5 +1,6 @@
 import catalog from './exercise-catalog.json';
 import { normalizeExerciseSearch, spanishExerciseName } from './exercise-translation';
+import { matchesCatalogFilters, type CatalogFilters } from './catalog-filters';
 
 export type CatalogExercise = {
   id: string;
@@ -115,11 +116,11 @@ export function searchCatalog(query: string, limit = 40): CatalogExercise[] {
 }
 
 /** One continuous catalogue; alphabet navigation never removes other sections. */
-export function exerciseCatalogSections(query = '') {
+export function exerciseCatalogSections(query = '', filters: CatalogFilters = {}) {
   const tokens = normalizeExerciseSearch(query).split(/\s+/).filter(Boolean);
   const sections = new Map<string, CatalogExercise[]>();
   for (const { item, spanishName, search } of indexedCatalog) {
-    if (!tokens.every(token => search.includes(token))) continue;
+    if (!tokens.every(token => search.includes(token)) || !matchesCatalogFilters(item, filters)) continue;
     const initial = normalizeExerciseSearch(spanishName).charAt(0).toUpperCase();
     const letter = /^[A-Z]$/.test(initial) ? initial : '#';
     const items = sections.get(letter) ?? [];

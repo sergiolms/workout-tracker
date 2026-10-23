@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { parseNumericInput } from '@/lib/numeric-input';
 
-type StepperBase = { label: string; step?: number; min?: number; suffix?: string };
+type StepperBase = { label: string; step?: number; min?: number; max?: number; suffix?: string };
 type StepperProps = StepperBase & ({ optional: true; value: number | null; onChange: (value: number | null) => void } | { optional?: false; value: number; onChange: (value: number) => void });
 
 export function Stepper(props: StepperProps) {
-  const { value, label, step = 1, min = 0, suffix } = props;
+  const { value, label, step = 1, min = 0, max = Infinity, suffix } = props;
   const emit = (next: number | null) => { if (next !== null) props.onChange(next); else if (props.optional) props.onChange(null); };
   const [draft, setDraft] = useState<string | null>(null);
   const integer = Number.isInteger(step) && suffix !== 'kg';
@@ -15,10 +15,10 @@ export function Stepper(props: StepperProps) {
     const text = draft ?? (value === null ? '' : String(value));
     if (!text.trim() && props.optional) { emit(null); setDraft(null); return; }
     const parsed = parseNumericInput(text, integer);
-    if (parsed !== null && Math.max(min, parsed) !== value) emit(Math.max(min, parsed));
+    if (parsed !== null && Math.min(max, Math.max(min, parsed)) !== value) emit(Math.min(max, Math.max(min, parsed)));
     setDraft(null);
   };
-  const adjust = (direction: number) => emit(Math.max(min, Number(((value ?? 0) + direction * step).toFixed(4))));
+  const adjust = (direction: number) => emit(Math.min(max, Math.max(min, Number(((value ?? 0) + direction * step).toFixed(4)))));
 
   return <div className="number-stepper flex h-12 min-w-0 items-center rounded-2xl bg-muted/45 focus-within:ring-2 focus-within:ring-ring/30">
     <button aria-label={`Reducir ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => adjust(-1)} type="button">−</button>
@@ -30,7 +30,7 @@ export function Stepper(props: StepperProps) {
           setDraft(text);
           if (!text.trim() && props.optional) { emit(null); return; }
           const parsed = parseNumericInput(text, integer);
-          if (parsed !== null && parsed >= min && parsed !== value) emit(parsed);
+          if (parsed !== null && parsed >= min && parsed <= max && parsed !== value) emit(parsed);
         }}
         onBlur={commit}
         onKeyDown={(event) => {
@@ -40,6 +40,6 @@ export function Stepper(props: StepperProps) {
         }} />
       {suffix ? <span aria-hidden="true" className="ml-1 shrink-0 text-xs font-medium text-muted-foreground">{suffix}</span> : null}
     </div>
-    <button aria-label={`Aumentar ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => adjust(1)} type="button">+</button>
+    <button aria-label={`Aumentar ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted disabled:opacity-40" disabled={value !== null && value >= max} onClick={() => adjust(1)} type="button">+</button>
   </div>;
 }

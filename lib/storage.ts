@@ -124,7 +124,6 @@ export function ensurePlan(state: AppState): AppState {
   return state;
 }
 
-export const BASE_SESSION_IDS = new Set(['A1', 'B1', 'A2', 'B2', 'C1', 'A3', 'B3', 'C2']);
 
 const DB_NAME = 'base-workout';
 const STORE_NAME = 'state';

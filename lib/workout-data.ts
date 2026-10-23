@@ -7,6 +7,8 @@ export type Exercise = {
   minReps: number;
   maxReps: number;
   increment: number;
+  restEnabled?: boolean;
+  restSeconds?: number;
   minRir?: number;
   maxRir?: number;
   unit?: string;
