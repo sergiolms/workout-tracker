@@ -1,13 +1,10 @@
 import type { AppState, ExerciseLog, WorkoutExerciseStatus, WorkoutLog } from './storage';
+import { statusFromLog } from './exercise-sets.ts';
+import { exerciseSuggestion } from './exercise-log.ts';
+export { statusFromLog } from './exercise-sets.ts';
 
 export type WorkoutExerciseEdit = { log: ExerciseLog; dirty: boolean; originalStatus: WorkoutExerciseStatus; hasLog: boolean };
 export const workoutStatusLabel: Record<WorkoutExerciseStatus, string> = { done: 'Completado', partial: 'Parcial', skipped: 'No realizado', pending: 'Pendiente' };
-
-export function statusFromLog(log: Pick<ExerciseLog, 'sets' | 'skipped'>): WorkoutExerciseStatus {
-  if (log.skipped) return 'skipped';
-  const count = log.sets.filter((set) => set.done).length;
-  return count && count === log.sets.length ? 'done' : count ? 'partial' : 'pending';
-}
 
 function belongsToWorkout(log: ExerciseLog, workout: WorkoutLog) {
   return log.workoutId === workout.id || (!log.workoutId && log.routine === workout.routine && log.week === workout.week && new Date(log.date).toLocaleDateString('en-CA') === new Date(workout.date).toLocaleDateString('en-CA'));
@@ -37,9 +34,7 @@ export function applyWorkoutEdit(state: AppState, workoutId: string, date: strin
     const edit = edits[index];
     if (!edit || edit.log.exercise !== item.name || !edit.dirty) return item;
     const template = state.sessions.find((session) => session.id === workout.routine)?.exercises.find((exercise) => exercise.name === item.name);
-    const lower = edit.log.pain >= 4 || edit.log.rir < 1 || (template && edit.log.sets.some((set) => set.reps < template.minReps));
-    const raise = template && !edit.log.skipped && edit.log.sets.length > 0 && edit.log.sets.every((set) => set.done && set.reps >= template.maxReps);
-    const log: ExerciseLog = { ...edit.log, date, workoutId: workout.id, routine: workout.routine, week: workout.week, suggestion: lower ? 'bajar' : raise ? 'subir' : 'mantener' };
+    const log: ExerciseLog = { ...edit.log, date, workoutId: workout.id, routine: workout.routine, week: workout.week, suggestion: template && !edit.log.skipped ? exerciseSuggestion(template, edit.log) : 'mantener' };
     const existing = exerciseLogs.findIndex((entry) => entry.id === log.id);
     if (existing < 0) exerciseLogs.push(log); else exerciseLogs[existing] = log;
     return { ...item, status: statusFromLog(log), logId: log.id };

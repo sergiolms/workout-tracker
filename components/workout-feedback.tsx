@@ -5,6 +5,7 @@ import { Check, Cloud, CloudOff, LoaderCircle, Timer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { remainingRest, performanceTrend } from '@/lib/workout-experience';
 import type { PersistenceStatus } from '@/lib/persistence';
+import { useScreenWakeLock } from '@/hooks/use-screen-wake-lock';
 
 export function GhostPerformance({ load, reps, previousLoad, previousReps, unit = 'kg' }: { load: number; reps: number; previousLoad: number; previousReps: number; unit?: string }) {
   const trend = performanceTrend(load, reps, previousLoad, previousReps);
@@ -32,6 +33,7 @@ export function RestCountdown({ deadline, onDismiss }: { deadline: number; onDis
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', tick); };
   }, []);
   const seconds = remainingRest(deadline, now);
+  useScreenWakeLock(seconds > 0);
   useEffect(() => { if (!seconds) { const timer = window.setTimeout(onDismiss, 5000); return () => window.clearTimeout(timer); } }, [seconds, onDismiss]);
   return <aside className="rest-countdown" aria-label="Descanso entre series"><Timer className="size-5 shrink-0 text-primary" /><div className="min-w-0 flex-1"><span className="block text-xs text-muted-foreground">Descanso</span><span role="timer" className="text-lg font-bold tabular-nums">{seconds ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '¡Siguiente serie!'}</span><output className="sr-only">{seconds === 0 ? 'Descanso terminado' : ''}</output></div><Button onClick={onDismiss} variant="outline" className="min-h-11 rounded-xl">{seconds ? 'Omitir' : 'Listo'}</Button></aside>;
 }

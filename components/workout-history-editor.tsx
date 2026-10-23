@@ -2,11 +2,10 @@
 
 /* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- Keep the scrollable region reachable by keyboard. */
 
-import { useId, useState } from 'react';
-import { Check, Plus, Save, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Stepper } from '@/components/number-stepper';
-import { Checkbox } from '@/components/ui/checkbox';
+import { ExerciseSetEditor } from '@/components/exercise-set-editor';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { applyWorkoutEdit, createWorkoutEdits, statusFromLog, workoutStatusLabel, type WorkoutExerciseEdit } from '@/lib/workout-history';
 import type { AppState, ExerciseLog, WorkoutLog } from '@/lib/storage';
@@ -14,7 +13,6 @@ import type { AppState, ExerciseLog, WorkoutLog } from '@/lib/storage';
 const inputClass = 'mt-1 h-12 min-w-0 max-w-full w-full rounded-xl border border-border bg-background px-3 text-base';
 
 export function WorkoutHistoryEditor({ editable, state, workout, onSave, onClose }: { editable: boolean; state: AppState; workout: WorkoutLog; onSave: (updater: (state: AppState) => AppState) => void; onClose: () => void }) {
-  const editorId = useId();
   const [date, setDate] = useState(new Date(workout.date).toLocaleDateString('en-CA'));
   const [notes, setNotes] = useState(workout.notes);
   const [edits, setEdits] = useState(() => createWorkoutEdits(state, workout, () => crypto.randomUUID()));
@@ -25,7 +23,7 @@ export function WorkoutHistoryEditor({ editable, state, workout, onSave, onClose
     onSave((current) => applyWorkoutEdit(current, workout.id, timestamp, notes, edits));
     onClose();
   };
-  const hasInvalidValue = edits.some(({ log }) => [log.load, log.rir, log.pain, ...log.sets.map((set) => set.reps)].some((value) => !Number.isFinite(value) || value < 0) || log.sets.some((set) => !Number.isInteger(set.reps)));
+  const hasInvalidValue = edits.some(({ log }) => [log.load, log.rir, log.pain, ...log.sets.flatMap((set) => [set.reps, set.load ?? log.load])].some((value) => !Number.isFinite(value) || value < 0) || log.sets.some((set) => !Number.isInteger(set.reps)));
 
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-xl">
     <div className="shrink-0 pr-8"><DialogTitle>Editar entrenamiento</DialogTitle><DialogDescription className="mt-2">Corrige los ejercicios, las series, las cargas y la fecha de esta sesión.</DialogDescription></div>
@@ -40,14 +38,8 @@ export function WorkoutHistoryEditor({ editable, state, workout, onSave, onClose
           <summary className="flex min-h-14 cursor-pointer flex-wrap items-center justify-between gap-2 p-3"><strong className="min-w-0 flex-1 break-words text-sm">{log.exercise}</strong><span className="shrink-0 text-xs font-semibold text-muted-foreground">{workoutStatusLabel[status]}</span></summary>
           <div className="space-y-3 border-t border-border p-3">
             {!edit.hasLog ? <p className="text-xs text-muted-foreground">No había detalle de series guardado. Revisa los valores si quieres completar este registro.</p> : null}
-            <div className="min-w-0"><span className="control-label">Carga de {log.exercise}</span><Stepper label={`Carga de ${log.exercise}`} step={0.5} suffix={unit === 'reps' ? undefined : unit} value={log.load} onChange={(load) => change(index, (value) => ({ ...value, load }))} /></div>
             <div className="flex flex-wrap gap-2"><Button className="min-h-11 rounded-lg" data-haptic="success" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: false, sets: value.sets.map((set) => ({ ...set, done: true })) }))}><Check className="size-4" /> Marcar todas</Button><Button className="min-h-11 rounded-lg" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: false, sets: value.sets.map((set) => ({ ...set, done: false })) }))}>Pendiente</Button><Button className="min-h-11 rounded-lg" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: true, sets: value.sets.map((set) => ({ ...set, done: false })) }))}>No realizado</Button></div>
-            {log.sets.map((set, setIndex) => <div key={setIndex} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-1 rounded-xl border border-border p-2">
-              <div className="col-span-2 min-w-0"><span className="control-label">Serie {setIndex + 1} · repeticiones</span><Stepper label={`Repeticiones de ${log.exercise}, serie ${setIndex + 1}`} value={set.reps} onChange={(reps) => change(index, (value) => ({ ...value, sets: value.sets.map((item, i) => i === setIndex ? { ...item, reps } : item) }))} /></div>
-              <label htmlFor={`${editorId}-${index}-${setIndex}`} className="flex min-h-12 cursor-pointer items-center gap-2"><Checkbox id={`${editorId}-${index}-${setIndex}`} aria-label={`${log.exercise}, serie ${setIndex + 1} hecha`} checked={set.done} onCheckedChange={(checked) => change(index, (value) => ({ ...value, skipped: false, sets: value.sets.map((item, i) => i === setIndex ? { ...item, done: Boolean(checked) } : item) }))} /><span className="text-sm">Hecha</span></label>
-              <Button aria-label={`Quitar serie ${setIndex + 1} de ${log.exercise}`} className="min-h-12" size="icon" variant="ghost" disabled={log.sets.length <= 1} onClick={() => change(index, (value) => ({ ...value, sets: value.sets.filter((_, i) => i !== setIndex) }))}><Trash2 className="size-4" /></Button>
-            </div>)}
-            <Button className="min-h-11 rounded-lg" variant="outline" onClick={() => change(index, (value) => ({ ...value, sets: [...value.sets, { reps: value.sets.at(-1)?.reps ?? 0, done: false }] }))}><Plus className="size-4" /> Añadir serie</Button>
+            <ExerciseSetEditor sets={log.sets} load={log.load} unit={unit} disabled={!editable} onChange={sets => change(index, value => ({ ...value, sets, skipped: false }))} />
             <div className="grid grid-cols-2 gap-3"><label className="min-w-0"><span className="control-label">RIR</span><input aria-label={`RIR de ${log.exercise}`} className={inputClass} min="0" max="10" type="number" value={log.rir} onChange={(event) => change(index, (value) => ({ ...value, rir: Math.max(0, Math.min(10, Number(event.target.value))) }))} /></label><label className="min-w-0"><span className="control-label">Molestias 0–10</span><input aria-label={`Molestias de ${log.exercise}`} className={inputClass} min="0" max="10" type="number" value={log.pain} onChange={(event) => change(index, (value) => ({ ...value, pain: Math.max(0, Math.min(10, Number(event.target.value))) }))} /></label></div>
             <label className="block min-w-0"><span className="control-label">Nota del ejercicio</span><textarea aria-label={`Nota de ${log.exercise}`} className="mt-1 min-h-20 min-w-0 w-full rounded-xl border border-border bg-background p-3 text-base" value={log.note} onChange={(event) => change(index, (value) => ({ ...value, note: event.target.value }))} /></label>
           </div>

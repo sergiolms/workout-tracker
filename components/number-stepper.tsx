@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { parseNumericInput } from '@/lib/numeric-input';
 
-type StepperBase = { label: string; step?: number; min?: number; max?: number; suffix?: string };
+type StepperBase = { label: string; step?: number; min?: number; max?: number; suffix?: string; compact?: boolean };
 type StepperProps = StepperBase & ({ optional: true; value: number | null; onChange: (value: number | null) => void } | { optional?: false; value: number; onChange: (value: number) => void });
 
 export function Stepper(props: StepperProps) {
@@ -20,8 +20,8 @@ export function Stepper(props: StepperProps) {
   };
   const adjust = (direction: number) => emit(Math.min(max, Math.max(min, Number(((value ?? 0) + direction * step).toFixed(4)))));
 
-  return <div className="number-stepper flex h-12 min-w-0 items-center rounded-2xl bg-muted/45 focus-within:ring-2 focus-within:ring-ring/30">
-    <button aria-label={`Reducir ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => adjust(-1)} type="button">−</button>
+  return <div data-compact={props.compact || undefined} className="number-stepper flex h-12 min-w-0 items-center rounded-2xl bg-muted/45 focus-within:ring-2 focus-within:ring-ring/30">
+    {!props.compact ? <button aria-label={`Reducir ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted" onClick={() => adjust(-1)} type="button">−</button> : null}
     <div className="flex min-w-0 flex-1 items-center justify-center">
       <input aria-label={label} type="text" inputMode={integer ? 'numeric' : 'decimal'} enterKeyHint="done" autoComplete="off" className="h-11 min-w-0 max-w-full rounded bg-transparent px-1 text-center text-base font-bold tabular-nums outline-none" style={{ width: `calc(${Math.max(1, String(draft ?? value ?? '').length)}ch + 0.5rem)` }} placeholder={props.optional ? '—' : undefined} value={draft ?? value ?? ''}
         onFocus={(event) => { setDraft(value === null ? '' : String(value)); event.currentTarget.select(); }}
@@ -40,6 +40,6 @@ export function Stepper(props: StepperProps) {
         }} />
       {suffix ? <span aria-hidden="true" className="ml-1 shrink-0 text-xs font-medium text-muted-foreground">{suffix}</span> : null}
     </div>
-    <button aria-label={`Aumentar ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted disabled:opacity-40" disabled={value !== null && value >= max} onClick={() => adjust(1)} type="button">+</button>
+    {!props.compact ? <button aria-label={`Aumentar ${label}`} className="grid h-full w-10 shrink-0 select-none place-items-center rounded-xl text-xl font-medium text-muted-foreground active:bg-muted disabled:opacity-40" disabled={value !== null && value >= max} onClick={() => adjust(1)} type="button">+</button> : null}
   </div>;
 }

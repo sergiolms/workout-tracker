@@ -9,6 +9,8 @@ export type Exercise = {
   increment: number;
   restEnabled?: boolean;
   restSeconds?: number;
+  warmupSets?: number;
+  supersetWithNext?: boolean;
   minRir?: number;
   maxRir?: number;
   unit?: string;
