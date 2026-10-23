@@ -191,16 +191,22 @@ export class CloudRepository {
     const changed = [...new Set([...before.keys(), ...local.keys()])].filter(
       (key) => !equal(before.get(key), local.get(key)),
     );
+    const batches: string[][] = [];
+    let batch: string[] = []; let bytes = 0;
     for (const key of changed) {
       recordId(key);
-      if (new TextEncoder().encode(canonical(local.get(key))).length > 900000)
+      const nextBytes = new TextEncoder().encode(canonical(local.get(key))).length;
+      if (nextBytes > 900000)
         throw Error(
           'Un registro es demasiado grande. Divide su contenido antes de guardar.',
         );
+      const estimate = nextBytes + new TextEncoder().encode(canonical(before.get(key))).length + recordId(key).length * 2 + 2000;
+      if (batch.length && (batch.length >= 200 || bytes + estimate > 2_000_000)) { batches.push(batch); batch = []; bytes = 0; }
+      batch.push(key); bytes += estimate;
     }
+    if (batch.length) batches.push(batch);
     // Each chunk is idempotent: a retry accepts fields already equal to ours.
-    for (let offset = 0; offset < changed.length; offset += 200) {
-      const keys = changed.slice(offset, offset + 200);
+    for (const keys of batches) {
       await this.database
         .transaction(async (tx) => {
           const header = (await tx.get(HEADER)) as CloudHeader;

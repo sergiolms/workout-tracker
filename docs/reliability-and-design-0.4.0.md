@@ -38,7 +38,7 @@ Contrastes calculados: texto secundario claro/fondo 5,53:1; blanco/acción 5,95:
 
 ## Pruebas
 
-- 100 pruebas de lógica: persistencia, conflictos, recuperación, conversión concurrente, copias, series, instancias y virtualización, además de las regresiones existentes.
+- 101 pruebas de lógica: persistencia, conflictos, recuperación, conversión concurrente, importación de más de 10 MB sin superar el límite por petición, copias, series, instancias y virtualización, además de las regresiones existentes.
 - Tres pruebas con el emulador oficial y el adaptador Firestore de producción: aislamiento entre cuentas, bloqueo del origen después de activar el destino y conversión de 205 medidas con paginación, consultas incrementales y conflictos.
 - `typecheck`, lint de la app y de los componentes modificados, build estático y build de Storybook.
 - Chrome personal: catálogo de 1.324 ejercicios con unas 10 filas montadas, `Home`/`End` y límite superior con `#`; tabla sin desbordamiento horizontal a 320 px y valores decimales legibles; entradas con coma y ajuste de 0,5; superserie Remo/Press y descanso al cerrar ronda; selección independiente de versiones; importación de demostración y detección del duplicado.
