@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,7 +14,7 @@ permissions:
 
 # Allow one concurrent deployment, skipping runs queued between the run in-progress and latest.
 concurrency:
-  group: pages
+  group: pages-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -46,6 +48,15 @@ jobs:
       - name: Test persistence and workout logic
         run: npm test
 
+      - name: Setup Java for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Test Firestore access and storage adapter
+        run: npm run test:rules
+
       - name: Build static export
         run: npm run build
 
@@ -69,6 +80,7 @@ jobs:
           path: dist/client/workout-tracker
 
   deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

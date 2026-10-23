@@ -76,7 +76,7 @@ export function MeasurementTracker({ state, updateState }: { state: AppState; up
   const save = () => {
     if (!valid || !editing) return;
     const original = editing === 'new' ? null : editing;
-    const next: Measurement = { ...original, id: original?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: new Date(`${date}T12:00:00`).toISOString() };
+    const next: Measurement = { ...original, id: original?.id ?? crypto.randomUUID(), date: new Date(`${date}T12:00:00`).toISOString() };
     if (weightNumber === undefined) delete next.weight; else next.weight = weightNumber;
     if (waistNumber === undefined) delete next.waist; else next.waist = waistNumber;
     updateState((current) => ({ ...current, measurements: original ? current.measurements.map((entry) => entry.id === original.id ? next : entry) : [...current.measurements, next] }));

@@ -30,7 +30,7 @@ export function HistoryBrowser<T extends { id: string; date: string }>({ title, 
   const [month, setMonth] = useState('');
   const [page, setPage] = useState(0);
   const result = useMemo(() => historyPage(entries, { query, month, page, searchText }), [entries, query, month, page, searchText]);
-  return <section className="mt-4 rounded-2xl bg-card p-4 sm:p-5" aria-label={title}>
+  return <section className="journal-section mt-4" aria-label={title}>
     <div className="mb-4 flex items-baseline justify-between gap-3"><h2 className="font-semibold">{title}</h2><span className="text-sm tabular-nums text-muted-foreground">{entries.length}</span></div>
     {entries.length ? <><div className="mb-3 flex flex-wrap gap-2"><label className="flex min-w-0 flex-[2_1_150px] items-center gap-2 rounded-xl border border-border bg-background px-3"><Search className="size-4 shrink-0 text-muted-foreground" /><input aria-label={`Buscar en ${title.toLowerCase()}`} className="h-11 min-w-0 w-full bg-transparent text-base outline-none" placeholder="Buscar…" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} /></label><select aria-label={`Mes de ${title.toLowerCase()}`} className="h-11 min-w-0 flex-[1_1_130px] rounded-xl border border-border bg-background px-3 text-sm" value={month} onChange={event => { setMonth(event.target.value); setPage(0); }}><option value="">Todos los meses</option>{result.months.map(value => <option key={value} value={value}>{new Date(`${value}-15T12:00:00`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</option>)}</select></div>
       <div key={`${query}:${month}:${result.page}`} className="space-y-2">{result.entries.map(entry => <div key={entry.id}>{renderEntry(entry)}</div>)}</div>

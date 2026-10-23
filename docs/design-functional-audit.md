@@ -1,5 +1,7 @@
 # Auditoría visual y funcional de BASE
 
+> Informe de la versión 0.3.0. El seguimiento de los hallazgos y la nueva dirección visual están en [la revisión 0.4.0](./reliability-and-design-0.4.0.md).
+
 23 de octubre de 2026. Alcance de la versión 0.3.0: Hoy, Plan, catálogo y editor, Progreso, gráficas, historiales, Timer, Movilidad, Perfil, temas y persistencia. Referencia solicitada: [openGym](./opengym-review.md).
 
 ## Diagnóstico

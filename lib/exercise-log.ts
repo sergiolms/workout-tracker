@@ -1,10 +1,24 @@
 import type { Exercise } from './workout-data';
 import type { AppState, ExerciseLog } from './storage';
-import { statusFromLog } from './workout-history.ts';
+import { statusFromLog, workingSets } from './exercise-sets.ts';
+import { exercisePrescription } from './exercise-prescription.ts';
 
-export function exerciseSuggestion(exercise: Pick<Exercise, 'minReps' | 'maxReps'>, log: Pick<ExerciseLog, 'sets' | 'rir' | 'pain'>): ExerciseLog['suggestion'] {
-  if (log.pain >= 4 || log.rir < 1 || log.sets.some((set) => set.reps < exercise.minReps)) return 'bajar';
-  return log.sets.length > 0 && log.sets.every((set) => set.done && set.reps >= exercise.maxReps) && log.rir >= 1 ? 'subir' : 'mantener';
+export function exerciseRecommendation(exercise: Pick<Exercise, 'minReps' | 'maxReps'> & Partial<Exercise>, log: Pick<ExerciseLog, 'sets' | 'rir' | 'pain'>) {
+  const sets = workingSets(log.sets); const completed = sets.filter(set => set.done);
+  const goal = exercisePrescription({ ...exercise, target: exercise.target ?? '', sets: exercise.sets ?? sets.length, name: exercise.name ?? '', increment: exercise.increment ?? 0.5 });
+  const minRir = goal.minRir ?? 1;
+  if (log.pain >= 4) return { suggestion: 'bajar' as const, reason: 'Has registrado molestias de 4/10 o más. Reduce la carga y revisa la técnica.' };
+  if (!completed.length) return { suggestion: 'mantener' as const, reason: 'Marca una serie de trabajo para valorar el resultado.' };
+  if (log.rir < minRir) return { suggestion: 'bajar' as const, reason: `Has dejado menos reserva de la prevista${goal.minRir !== null ? ` (RIR ${minRir})` : ''}.` };
+  if (completed.some(set => set.reps < exercise.minReps)) return { suggestion: 'bajar' as const, reason: `Alguna serie realizada está por debajo de ${exercise.minReps} repeticiones.` };
+  const loads = completed.map(set => set.load).filter(load => load !== undefined);
+  if (new Set(loads).size > 1) return { suggestion: 'mantener' as const, reason: 'Has usado cargas distintas. Compara cada serie antes de subir la carga general.' };
+  if (sets.length >= (exercise.sets ?? sets.length) && sets.every(set => set.done && set.reps >= exercise.maxReps)) return { suggestion: 'subir' as const, reason: `Todas las series de trabajo alcanzan ${exercise.maxReps} repeticiones y respetan la reserva prevista.` };
+  return { suggestion: 'mantener' as const, reason: 'Completa el rango de repeticiones en todas las series de trabajo antes de subir.' };
+}
+
+export function exerciseSuggestion(exercise: Pick<Exercise, 'minReps' | 'maxReps'> & Partial<Exercise>, log: Pick<ExerciseLog, 'sets' | 'rir' | 'pain'>): ExerciseLog['suggestion'] {
+  return exerciseRecommendation(exercise, log).suggestion;
 }
 
 export function saveExerciseLog(state: AppState, log: ExerciseLog): AppState {

@@ -1,4 +1,4 @@
-const CACHE = 'base-shell-v3';
+const CACHE = 'base-shell-v4';
 const BASE_PATH = self.location.pathname.replace(/\/sw\.js$/, '');
 const SHELL = `${BASE_PATH || ''}/`;
 

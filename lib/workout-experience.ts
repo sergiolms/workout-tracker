@@ -1,4 +1,5 @@
 import type { AppState, ExerciseLog } from './storage.ts';
+import { workingSets } from './exercise-sets.ts';
 
 // Compare only like-for-like sets; a higher load with fewer reps is mixed.
 export function performanceTrend(load: number, reps: number, previousLoad: number, previousReps: number): 'up' | 'down' | 'same' | 'mixed' {
@@ -9,7 +10,7 @@ export function performanceTrend(load: number, reps: number, previousLoad: numbe
 }
 
 export function previousExerciseLog(logs: ExerciseLog[], exercise: string, workoutId: string): ExerciseLog | undefined {
-  return logs.filter(log => log.exercise === exercise && log.workoutId !== workoutId && !log.skipped && log.sets.some(set => set.done))
+  return logs.filter(log => log.exercise === exercise && log.workoutId !== workoutId && !log.skipped && workingSets(log.sets).some(set => set.done))
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
 }
 

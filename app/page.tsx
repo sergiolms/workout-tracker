@@ -5,7 +5,7 @@ import {
   Cloud, CloudOff, Download, Dumbbell, Footprints, HeartPulse, Home, Info, LogOut, Moon, Monitor,
   Maximize2, MoreHorizontal, Pause, Pencil, Play, Plus, RotateCcw, Save, Search, Sun, Timer, Trash2, Wind, X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, useId, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -15,11 +15,18 @@ import { MobilityIllustration } from '@/components/mobility-illustration';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogThemeProvider, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { exerciseCatalogSections, exerciseImageUrl, getExerciseDescription, getExerciseDetails, getExerciseDisplayName, type CatalogExercise } from '@/lib/exercise-catalog';
-import { firebaseConfigured, loadFromFirebase, signInWithGoogle, signOutFirebase, subscribeToAuth, syncToFirebase, type FirebaseUser } from '@/lib/firebase';
+import { createFirebaseRepository, firebaseConfigured, signInWithGoogle, signOutFirebase, subscribeToAuth, type FirebaseUser } from '@/lib/firebase';
 import { completedPlanSlots, countsTowardPlan, nextPlanSession, planProgress } from '@/lib/plan-progress';
 import { mobilityGuides, resetMobilityKeys } from '@/lib/mobility-guide';
 import { mobility, warmup, type Exercise } from '@/lib/workout-data';
-import { backupLocalState, clearAppLocalData, defaultState, loadLocalState, saveLocalState, weeksFromPeriods, type AppState, type CardioLog, type ExerciseLog, type PlanPeriod, type Session, type WorkoutLog } from '@/lib/storage';
+import { backupLocalState, clearAppLocalData, defaultState, loadLocalState, loadPendingChanges, savePendingChanges, saveLocalState, weeksFromPeriods, type AppState, type CardioLog, type ExerciseLog, type PlanPeriod, type Session, type WorkoutLog } from '@/lib/storage';
+import { SyncConflicts } from '@/components/sync-conflicts';
+import { activeWorkout, startWorkout } from '@/lib/workout-instance';
+import { ExerciseSetEditor } from '@/components/exercise-set-editor';
+import { exerciseSets, supersetRange, supersetTransition, workingSets } from '@/lib/exercise-sets';
+import { statusFromLog } from '@/lib/workout-history';
+import { BackupImporter } from '@/components/backup-importer';
+import { useScreenWakeLock } from '@/hooks/use-screen-wake-lock';
 
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { appRelease } from '@/lib/app-version';
@@ -39,10 +46,10 @@ import { applyActivityEdit, deleteActivity } from '@/lib/activity-history';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { previousExerciseLog, undoSkippedExercise } from '@/lib/workout-experience';
 import { ExercisePickerSheet, WorkoutReview } from '@/components/training-dialogs';
-import { GhostPerformance, RestDock, SaveStatus, UndoNotice } from '@/components/workout-feedback';
+import { RestDock, SaveStatus, UndoNotice } from '@/components/workout-feedback';
 import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-editor';
 import { exercisePrescription } from '@/lib/exercise-prescription';
-import { exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
+import { exerciseRecommendation, exerciseSuggestion, saveExerciseLog } from '@/lib/exercise-log';
 import { RirSelector } from '@/components/segmented-control';
 import { PainSlider } from '@/components/pain-slider';
 import { RestSettings } from '@/components/rest-settings';
@@ -69,7 +76,7 @@ const navItems: Array<{ id: Tab; label: string; icon: typeof Home; featured?: bo
 
 const today = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 const localDateKey = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
-const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const uid = () => crypto.randomUUID();
 
 
 function markSessionStarted(key: string) { try { if (!localStorage.getItem(key)) localStorage.setItem(key, String(Date.now())); } catch { /* Optional elapsed-time hint. */ } }
@@ -79,35 +86,6 @@ function StatusDot({ pain }: { pain: number }) {
 }
 
 const FALLBACK_EXERCISE: Exercise = { name: '', target: '', sets: 1, minReps: 0, maxReps: 0, increment: 1, unit: 'kg' };
-
-type ExerciseDraft = { load: number; reps: number[]; completed: boolean[]; rir: number; pain: number; note: string };
-function useExerciseDraft(key: string, initial: ExerciseDraft) {
-  const subscribe = useCallback((notify: () => void) => {
-    const onStorage = (event: StorageEvent) => { if (event.key === key) notify(); };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [key]);
-  const getSnapshot = useCallback(() => localStorage.getItem(key), [key]);
-  const raw = useSyncExternalStore(subscribe, getSnapshot, () => null);
-  const [entry, setEntry] = useState<{ key: string; value: ExerciseDraft } | null>(null);
-  let restored = initial;
-  if (raw) { try { restored = JSON.parse(raw) as ExerciseDraft; } catch { restored = initial; } }
-  const savedValue = entry?.key === key ? entry.value : restored;
-  const value = { ...savedValue, reps: initial.reps.map((fallback, index) => savedValue.reps[index] ?? fallback), completed: initial.completed.map((_, index) => savedValue.completed[index] ?? false) };
-  function change<K extends keyof ExerciseDraft>(field: K, next: ExerciseDraft[K] | ((old: ExerciseDraft[K]) => ExerciseDraft[K])) {
-    const updated = { ...value, [field]: typeof next === 'function' ? (next as (old: ExerciseDraft[K]) => ExerciseDraft[K])(value[field]) : next };
-    setEntry({ key, value: updated });
-    try { localStorage.setItem(key, JSON.stringify(updated)); } catch { /* In-memory draft remains usable. */ }
-  }
-  function restoreCompleted(completed: boolean[]) {
-    let latest = value;
-    try { latest = JSON.parse(localStorage.getItem(key) ?? 'null') ?? value; } catch { /* Use current draft. */ }
-    const updated = { ...latest, completed };
-    setEntry({ key, value: updated });
-    try { localStorage.setItem(key, JSON.stringify(updated)); } catch { /* Keep in-memory draft. */ }
-  }
-  return { value, change, restoreCompleted };
-}
 
 function ExerciseImage({ image, name }: { image?: string; name: string }) {
   const [failedImage, setFailedImage] = useState<string | null>(null);
@@ -181,6 +159,7 @@ function WorkoutTimer() {
   const [rounds, setRounds] = useState(8);
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
+  const wakeLock = useScreenWakeLock(running);
   const origin = useRef(0);
   const base = useRef(0);
   const total = mode === 'libre' ? Infinity : mode === 'hiit' ? (work + rest) * rounds - rest : duration;
@@ -227,13 +206,13 @@ function WorkoutTimer() {
         </fieldset>
         <div className="timer-dial"><ProgressRing value={mode === 'libre' ? elapsed % 60 / 60 * 100 : mode === 'hiit' ? (1 - remaining / (resting ? rest : work)) * 100 : elapsed / total * 100} label={formatClock(remaining)} description="Tiempo del temporizador" className="size-[230px] text-[44px] font-bold tracking-tighter sm:size-[270px] sm:text-[52px]" /></div><p role="timer" className="sr-only">{formatClock(remaining)}</p><p className="mb-6 text-center text-sm font-medium text-muted-foreground">{phase}</p>
         <div className="timer-controls"><Button aria-label="Reiniciar temporizador" className="size-12 rounded-full" onClick={reset} size="icon" variant="outline"><RotateCcw /></Button><Button aria-label={running ? 'Pausar temporizador' : 'Iniciar temporizador'} className="h-14 min-w-40 rounded-full text-base" onClick={toggle}>{running ? <><Pause /> Pausar</> : <><Play /> {elapsed ? 'Continuar' : 'Empezar'}</>}</Button></div>
-        <p className="mt-4 text-center text-xs text-muted-foreground">Mantén la app visible para recibir el aviso al terminar.</p>
+        <p className="mt-4 text-center text-xs text-muted-foreground">{wakeLock === 'held' ? 'Pantalla encendida mientras el temporizador está en marcha.' : 'Mantén la app visible para recibir el aviso al terminar.'}</p>
       </div>
     </section>
   );
 }
 
-function TodayView({ editable, state, updateState, onOpenSessions, preferredRoutine, onFinish, notice, onStartRest, onStopRest, onOfferUndo, onClearUndo }: { onClearUndo: () => void; onStartRest: (seconds: number) => void; onStopRest: () => void; onOfferUndo: (message: string, action: () => void) => void; editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
+function TodayView({ accountId, editable, state, updateState, onOpenSessions, preferredRoutine, onFinish, notice, onStartRest, onStopRest, onOfferUndo, onClearUndo }: { accountId: string; onClearUndo: () => void; onStartRest: (seconds: number) => void; onStopRest: () => void; onOfferUndo: (message: string, action: () => void) => void; editable: boolean; state: AppState; updateState: (updater: (state: AppState) => AppState) => void; onOpenSessions: () => void; preferredRoutine: string; onFinish: (workout: WorkoutLog, exerciseLog?: ExerciseLog) => void; notice: string }) {
   const weekPlan = state.plan.find((week) => week.week === state.week) ?? state.plan[0];
   const sessionById = useMemo(() => new Map(state.sessions.map((session) => [session.id, session])), [state.sessions]);
   const routineIds = useMemo(() => (weekPlan?.routines ?? []).filter((id) => sessionById.has(id)), [sessionById, weekPlan]);
@@ -242,20 +221,30 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const sessionExercises = sessionById.get(routineId)?.exercises ?? [];
   const exercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
   const day = localDateKey();
-  const workoutId = `${day}:${state.week}:${routineId}`;
+  const [instanceSeed, setInstanceSeed] = useState(uid);
+  const resumedWorkout = activeWorkout(state, state.week, routineId);
+  const workoutId = resumedWorkout?.id ?? `${instanceSeed}:${routineId}`;
   const lastLog = previousExerciseLog(state.exerciseLogs, exercise.name, workoutId);
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
-  const routineLogs = state.exerciseLogs.filter((log) => log.workoutId === workoutId || (!log.workoutId && log.week === state.week && log.routine === routineId && new Date(log.date).toLocaleDateString('en-CA') === day));
-  const draftKey = `base-draft:${day}:${state.week}:${routineId}:${exercise.name}`;
-  const initialDraft = { load: lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20), reps: Array(exercise.sets).fill(exercise.maxReps), completed: Array(exercise.sets).fill(false), rir: exercisePrescription(exercise).minRir ?? 2, pain: 0, note: '' };
-  const { value: draft, change, restoreCompleted } = useExerciseDraft(draftKey, initialDraft);
-  const { load, reps: setReps, completed, rir, pain, note } = draft;
-  const setLoad = (value: number) => change('load', value);
-  const setSetReps = (value: (old: number[]) => number[]) => change('reps', value);
-  const setCompleted = (value: (old: boolean[]) => boolean[]) => change('completed', value);
-  const setRir = (value: number) => change('rir', value);
-  const setPain = (value: number) => change('pain', value);
-  const setNote = (value: string) => change('note', value);
+  const routineLogs = state.exerciseLogs.filter((log) => log.workoutId === workoutId);
+  const currentLog = routineLogs.find(log => log.exercise === exercise.name);
+  const sets = exerciseSets(exercise, currentLog, lastLog);
+  const load = currentLog?.load ?? lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20);
+  const completed = sets.map(set => set.done);
+  const rir = currentLog?.rir ?? exercisePrescription(exercise).minRir ?? 2;
+  const pain = currentLog?.pain ?? 0;
+  const note = currentLog?.note ?? '';
+  const changeLog = (updater: (log: ExerciseLog) => ExerciseLog) => updateState(current => {
+    const existing = current.exerciseLogs.find(log => log.workoutId === workoutId && log.exercise === exercise.name);
+    const log = updater(existing ?? { id: `${workoutId}:${exercise.name}`, date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets, rir, pain, note, suggestion: 'mantener' });
+    const started = startWorkout(current, { id: workoutId, date: day, week: state.week, routine: routineId, startedAt: new Date().toISOString() });
+    return saveExerciseLog(started, { ...log, date: new Date().toISOString(), suggestion: exerciseSuggestion(exercise, log) });
+  });
+  const setLoad = (load: number) => changeLog(log => ({ ...log, load, sets: log.sets.map(set => ({ ...set, load })) }));
+  const setCompleted = (updater: (old: boolean[]) => boolean[]) => changeLog(log => { const next = updater(log.sets.map(set => set.done)); return { ...log, skipped: false, sets: log.sets.map((set, i) => ({ ...set, done: next[i] ?? false })) }; });
+  const setRir = (rir: number) => changeLog(log => ({ ...log, rir }));
+  const setPain = (pain: number) => changeLog(log => ({ ...log, pain }));
+  const setNote = (note: string) => changeLog(log => ({ ...log, note }));
   const details = getExerciseDetails(exercise.name, exercise.catalogId);
   const description = exercise.description || getExerciseDescription(exercise.name, exercise.catalogId);
   const [showNotes, setShowNotes] = useState(false);
@@ -266,7 +255,8 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const [finishReview, setFinishReview] = useState(false);
   const rest = exerciseRestPreferences(exercise, state);
   const changeRest = (changes: RestPreferences) => updateState(current => ({ ...current, sessions: current.sessions.map(session => session.id === routineId ? { ...session, exercises: session.exercises.map(item => item.name === exercise.name ? { ...item, restEnabled: rest.enabled, restSeconds: rest.seconds, ...changes } : item) } : session) }));
-  const sessionStartKey = `base-session-start:${workoutId}`;
+  const sessionStartKey = `base-session-start:${accountId}:${workoutId}`;
+  const ensureStarted = () => updateState(current => startWorkout(current, { id: workoutId, date: day, week: state.week, routine: routineId, startedAt: new Date().toISOString() }));
 
   const [reviewMinutes, setReviewMinutes] = useState<number | null>(null);
   const exerciseCard = useRef<HTMLElement>(null);
@@ -274,10 +264,11 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
     const before = [...completed];
     const index = exerciseIndex;
     markSessionStarted(sessionStartKey);
+    ensureStarted();
     setCompleted(() => next);
     if (rest && exerciseRestPreferences(exercise, state).enabled) onStartRest(exerciseRestPreferences(exercise, state).seconds);
     else if (!rest) onStopRest();
-    onOfferUndo(next.some((done, i) => done && !completed[i]) ? 'Serie marcada' : 'Series actualizadas', () => { restoreCompleted(before); setExerciseIndex(index); onStopRest(); });
+    onOfferUndo(next.some((done, i) => done && !completed[i]) ? 'Serie marcada' : 'Series actualizadas', () => { setCompleted(() => before); setExerciseIndex(index); onStopRest(); });
   };
   const jumpToExercise = (index: number) => { setExerciseIndex(index); setSaved(false); setShowExercises(false); setFinishReview(false); window.setTimeout(() => exerciseCard.current?.scrollIntoView({ block: 'start', behavior: 'instant' }), 0); };
 
@@ -291,14 +282,16 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   if (!weekPlan) return <div className="space-y-4"><section className="summary-card"><div><p className="eyebrow">Tu entrenamiento</p><h1 className="page-title">Entrenamiento de hoy</h1></div></section><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-bold">Crea tu plan para empezar</h2><p className="mt-2 text-sm text-muted-foreground">Define tus periodos y asigna las sesiones que quieras hacer.</p><Button className="mt-4 h-12 w-full rounded-xl font-bold" onClick={onOpenSessions}><Plus /> Crear plan</Button></section><WarmupCard state={state} updateState={updateState} /></div>;
   if (!routineIds.length) return <div className="space-y-4"><section className="summary-card"><div><p className="eyebrow">Semana {state.week}</p><h1 className="page-title">Entrenamiento de hoy</h1></div></section><section className="rounded-2xl border border-border bg-card p-5"><h2 className="text-lg font-bold">No hay sesiones asignadas a esta semana</h2><p className="mt-2 text-sm text-muted-foreground">Añade o asigna una rutina desde tu plan.</p><Button className="mt-4 h-12 w-full rounded-xl font-bold" onClick={onOpenSessions}><Plus /> Abrir plan</Button></section><WarmupCard state={state} updateState={updateState} /></div>;
 
-  const suggestion = exerciseSuggestion(exercise, { sets: setReps.map((reps, index) => ({ reps, done: completed[index] })), rir, pain });
+  const recommendation = exerciseRecommendation(exercise, { sets, rir, pain });
+  const suggestion = recommendation.suggestion;
 
   const commitExercise = (done: boolean[]) => {
     if (!editable) return;
     onClearUndo();
+    ensureStarted();
     markSessionStarted(sessionStartKey);
-    const sets = setReps.map((reps, index) => ({ reps, done: Boolean(done[index]) }));
-    const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets, rir, pain, note, skipped: false, suggestion: exerciseSuggestion(exercise, { sets, rir, pain }) };
+    const confirmedSets = sets.map((set, index) => ({ ...set, done: Boolean(done[index]) }));
+    const log: ExerciseLog = { id: currentLog?.id ?? `${workoutId}:${exercise.name}`, date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: confirmedSets, rir, pain, note, skipped: false, suggestion: exerciseSuggestion(exercise, { sets: confirmedSets, rir, pain }) };
     updateState((current) => saveExerciseLog(current, log));
     setConfirmUnmarked(false);
     setSaved(true);
@@ -315,11 +308,12 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
 
   const skipExercise = () => {
     if (!editable) return;
+    ensureStarted();
     markSessionStarted(sessionStartKey);
     const previous = routineLogs.find(item => item.exercise === exercise.name);
     const previousWorkouts = state.workoutLogs;
     const index = exerciseIndex;
-    const log: ExerciseLog = { id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? uid(), date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: setReps.map((reps) => ({ reps, done: false })), rir, pain, note, skipped: true, suggestion: 'mantener' };
+    const log: ExerciseLog = { id: currentLog?.id ?? `${workoutId}:${exercise.name}`, date: new Date().toISOString(), week: state.week, routine: routineId, workoutId, exercise: exercise.name, load, sets: sets.map(set => ({ ...set, done: false })), rir, pain, note, skipped: true, suggestion: 'mantener' };
     updateState((current) => saveExerciseLog(current, log));
     onStopRest();
     onOfferUndo('Ejercicio omitido', () => { updateState(current => undoSkippedExercise(current, log, previous, previousWorkouts)); setExerciseIndex(index); setSaved(false); });
@@ -331,7 +325,7 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
   const buildWorkout = (date: string) => {
     const currentExerciseLog = completed.some(Boolean) ? {
       id: routineLogs.find((item) => item.exercise === exercise.name)?.id ?? `${workoutId}:${exercise.name}`, date, week: state.week, routine: routineId, workoutId, exercise: exercise.name, load,
-      sets: setReps.map((reps, index) => ({ reps, done: completed[index] })), rir, pain, note, skipped: false, suggestion,
+      sets, rir, pain, note, skipped: false, suggestion,
     } satisfies ExerciseLog : undefined;
     const logs = currentExerciseLog
       ? [...routineLogs.filter((item) => item.exercise !== exercise.name), currentExerciseLog]
@@ -341,8 +335,7 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
       routineName: sessionById.get(routineId)?.name ?? routineId, notes: savedWorkout?.notes ?? '',
       exercises: sessionExercises.map((item) => {
         const log = logs.find((entry) => entry.exercise === item.name);
-        const doneSets = log?.sets.filter((set) => set.done).length ?? 0;
-        const status = log?.skipped ? 'skipped' : !log ? 'pending' : doneSets > 0 && doneSets === log.sets.length ? 'done' : doneSets ? 'partial' : 'pending';
+        const status = log ? statusFromLog(log) : 'pending';
         return { name: item.name, status, ...(log ? { logId: log.id } : {}) };
       }),
     };
@@ -356,11 +349,12 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
     try { localStorage.removeItem(sessionStartKey); } catch { /* Optional elapsed hint. */ }
     setFinishReview(false);
     onFinish(workout, currentExerciseLog);
+    setInstanceSeed(uid());
   };
   const review = buildWorkout(day);
-  const reviewSets = review.logs.reduce((sum, log) => sum + (log.skipped ? 0 : log.sets.filter(set => set.done).length), 0);
+  const reviewSets = review.logs.reduce((sum, log) => sum + (log.skipped ? 0 : workingSets(log.sets).filter(set => set.done).length), 0);
 
-  const doneNames = new Set(routineLogs.filter((log) => !log.skipped && log.sets.length > 0 && log.sets.every(set => set.done)).map(log => log.exercise));
+  const doneNames = new Set(routineLogs.filter(log => statusFromLog(log) === 'done').map(log => log.exercise));
   const completedInRoutine = doneNames.size;
   const dark = state.theme === 'dark' || (state.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
@@ -395,23 +389,21 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
         </div>
 
         <div className="p-4 sm:p-5">
-          {exercise.unit !== 'reps' ? <div className="mb-5"><p className="control-label">Carga para todas las series</p><Stepper label={`Carga de ${exercise.name}`} value={load} onChange={setLoad} step={exercise.unit === 'kg' ? 0.5 : exercise.increment} suffix={exercise.unit} /></div> : null}
+          {exercise.unit !== 'reps' ? <div className="mb-5"><OptionalSection title="Aplicar una carga a todas" summary={`${load} ${exercise.unit ?? 'kg'}`} subtle><Stepper label={`Carga de ${exercise.name}`} value={load} onChange={setLoad} step={0.5} suffix={exercise.unit ?? 'kg'} /></OptionalSection></div> : null}
           <div className="mb-3 flex items-center justify-between gap-3"><span className="control-label">Series</span><Button className="min-h-11 rounded-xl" data-haptic="success" variant="outline" aria-pressed={completed.length > 0 && completed.every(Boolean)} onClick={() => toggleSets(completed.map(() => !completed.every(Boolean)), false)}><Check className="size-4" />{completed.every(Boolean) ? 'Desmarcar todas' : 'Marcar todas'}</Button></div>
-          <div className="set-grid set-grid-header"><span>Serie</span><span>Repeticiones</span><span>Hecho</span></div>
-          <div className="space-y-2.5">
-            {setReps.map((reps, index) => (
-              <div key={index} className="set-grid completion-row rounded-xl" data-complete={completed[index]}>
-                <span className="text-center text-sm font-bold text-muted-foreground">{index + 1}</span>
-                <div className="min-w-0"><Stepper label={`Repeticiones, serie ${index + 1}`} value={reps} onChange={(value) => setSetReps((current) => current.map((item, itemIndex) => itemIndex === index ? value : item))} />{lastLog?.sets[index]?.done ? <div className="mt-1 text-center"><GhostPerformance load={exercise.unit === 'reps' ? 0 : load} reps={reps} previousLoad={exercise.unit === 'reps' ? 0 : lastLog.load} previousReps={lastLog.sets[index].reps} unit={exercise.unit === 'reps' ? '' : exercise.unit} /></div> : null}</div>
-                <Checkbox aria-label={`Serie ${index + 1} hecha`} checked={completed[index]} className="size-12 justify-self-end rounded-xl after:inset-0 data-checked:border-emerald-500 data-checked:bg-emerald-500 dark:data-checked:bg-emerald-500 [&_svg]:size-5" onCheckedChange={(checked) => toggleSets(completed.map((item, itemIndex) => itemIndex === index ? Boolean(checked) : item), Boolean(checked))} />
-              </div>
-            ))}
-          </div>
+          {supersetRange(sessionExercises, exerciseIndex).end > supersetRange(sessionExercises, exerciseIndex).start ? <p className="mb-3 border-l-2 border-primary pl-3 text-sm text-muted-foreground">Superserie · alterna una serie de cada ejercicio. El descanso empieza al terminar la ronda.</p> : null}
+          <ExerciseSetEditor sets={sets} load={load} unit={exercise.unit} previous={lastLog} disabled={!editable} onChange={sets => changeLog(log => ({ ...log, sets, skipped: false }))} onComplete={(next, index) => {
+            const checked = next[index].done;
+            const warmup = next[index].kind === 'warmup';
+            const transition = supersetTransition(sessionExercises, exerciseIndex, next, routineLogs);
+            toggleSets(next.map(set => set.done), checked && !warmup && transition.rest);
+            if (checked && !warmup && transition.next !== exerciseIndex) jumpToExercise(transition.next);
+          }} />
 
 
           <div className="mt-4"><RestSettings enabled={rest.enabled} seconds={rest.seconds} disabled={!editable} onEnabledChange={restEnabled => { changeRest({ restEnabled }); if (!restEnabled) onStopRest(); }} onSecondsChange={restSeconds => changeRest({ restSeconds })} /></div>
           <div className="mt-5"><OptionalSection title="Sensaciones del ejercicio" summary={`RIR ${rir} · ${pain ? `molestias ${pain}/10` : 'sin molestias'}`}><div className="grid gap-5 sm:grid-cols-2"><RirSelector disabled={!editable} onChange={setRir} value={rir} /><PainSlider disabled={!editable} value={pain} onChange={setPain} /></div></OptionalSection></div>
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-3.5 py-3 text-sm"><span className="flex items-center gap-2 font-medium"><StatusDot pain={pain} /> Recomendación</span><strong className="capitalize">{suggestion === 'subir' ? `subir a ${load + exercise.increment} ${exercise.unit}` : suggestion}</strong></div>
+          <div className="mt-5 border-t border-border pt-4 text-sm"><div className="flex items-center justify-between gap-3"><span className="flex items-center gap-2 font-medium"><StatusDot pain={pain} /> Próxima sesión</span><strong className="capitalize">{suggestion === 'subir' && exercise.unit !== 'reps' ? `Probar ${load + exercise.increment} ${exercise.unit ?? 'kg'}` : suggestion === 'bajar' ? 'Reducir carga' : 'Mantener'}</strong></div><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{recommendation.reason}</p></div>
 
           <AnimatedDisclosure id="exercise-notes" open={showNotes}><textarea aria-label="Notas rápidas" className="mt-4 min-h-20 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setNote(event.target.value)} placeholder="Técnica, sensaciones..." value={note} /></AnimatedDisclosure>
           <div className="mt-4 space-y-2">
@@ -422,7 +414,7 @@ function TodayView({ editable, state, updateState, onOpenSessions, preferredRout
               <Button aria-label="Añadir nota" aria-expanded={showNotes} aria-controls="exercise-notes" className="h-14 w-full rounded-xl" onClick={() => setShowNotes((value) => !value)} size="icon" variant="outline"><MoreHorizontal /></Button>
             </div>
           </div>
-          <p className="mt-3 text-center text-xs font-medium text-muted-foreground">Las series se guardan en tu historial al guardar el ejercicio.</p>
+          <p className="mt-3 text-center text-xs font-medium text-muted-foreground">Las series se guardan automáticamente. Finaliza la sesión para añadirla al historial.</p>
         </div>
       </MotionSurface></article>
 
@@ -569,19 +561,20 @@ function PlanView({ state, updateState, onStartSession }: { state: AppState; upd
           <p className="mt-3 text-sm text-muted-foreground">{activePeriod.cardio}</p><p className="mt-1 text-xs text-muted-foreground">Caminatas: {activePeriod.walks} · Movilidad: {activePeriod.mobility}</p>
         </section>
 
-        <section className="mt-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <section className="journal-section mt-4">
           <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold">Tus sesiones</h2><Button variant="ghost" className="min-h-11 rounded-xl text-primary" onClick={() => setView('routines')}>Organizar</Button></div>
           {weekPlan.routines.length ? <div className="space-y-2">{weekPlan.routines.map((id) => {
             const session = state.sessions.find((item) => item.id === id);
             if (!session) return null;
             const completed = completedPlanSlots(state.workoutLogs).has(`${weekPlan.week}:${id}`);
-            return <div key={id} className="routine-card"><span className={`routine-symbol ${completed ? 'is-done' : ''}`}>{completed ? <Check className="size-5" /> : <Dumbbell className="size-5" />}</span><span className="min-w-0 flex-1"><strong className="block text-lg font-bold">{session.name}</strong><small className="text-muted-foreground">{completed ? 'Realizada' : `${session.exercises.length} ejercicios`}</small></span><Button className="min-h-11 shrink-0 rounded-xl px-4" onClick={() => onStartSession(weekPlan.week, id)} variant={completed ? 'outline' : 'default'}>{completed ? 'Revisar' : 'Empezar'}</Button></div>;
+            const inProgress = activeWorkout(state, weekPlan.week, id);
+            return <div key={id} className="routine-card"><span className={`routine-symbol ${completed ? 'is-done' : ''}`}>{completed ? <Check className="size-5" /> : <Dumbbell className="size-5" />}</span><span className="min-w-0 flex-1"><strong className="block text-lg font-bold">{session.name}</strong><small className="text-muted-foreground">{inProgress ? 'En curso' : completed ? 'Realizada' : `${session.exercises.length} ejercicios`}</small></span><Button className="min-h-11 shrink-0 rounded-xl px-4" onClick={() => onStartSession(weekPlan.week, id)} variant={completed ? 'outline' : 'default'}>{inProgress ? 'Continuar' : completed ? 'Repetir' : 'Empezar'}</Button></div>;
           })}</div> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">No hay sesiones asignadas a esta semana.</p>}
         </section>
 
         </> : null}
       </> : null}
-        {view === 'routines' ? <section className="surface p-4 sm:p-5">
+        {view === 'routines' ? <section className="journal-section">
           <div className="mb-5 flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Tus rutinas</h2><p className="mt-1 text-xs text-muted-foreground">{activePeriod ? `Marca las que se repiten en ${activePeriod.name}.` : 'Crea tus sesiones y después asígnalas a un tramo.'}</p></div><Button aria-label="Crear sesión" className="size-11 shrink-0 rounded-full" onClick={() => { setEditing(null); setBuilding(true); }} size="icon"><Plus /></Button></div>
           {state.sessions.length ? <div className="space-y-2">{state.sessions.map((session) => {
           const selected = assigned.has(session.id);
@@ -628,7 +621,9 @@ function SessionBuilder({ defaultRest, initialSession, onSave, onCancel }: { def
       <input aria-label="Nombre de la sesión" className="mb-4 h-12 w-full rounded-xl border border-border bg-background px-4 text-base font-medium outline-none focus:ring-2 focus:ring-ring" onChange={(event) => setName(event.target.value)} placeholder="Nombre (p. ej. Empuje A)" value={name} />
 
       {picked.length ? <div className="mb-4 space-y-3">{picked.map((exercise, index) => (
-        <div key={exercise.name} className="space-y-2 rounded-2xl bg-card p-4"><div className="flex items-center gap-3"><span className="text-xs font-semibold tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span><strong className="min-w-0 flex-1 text-base">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</strong><DropdownMenu><DropdownMenuTrigger aria-label={`Opciones de ${getExerciseDisplayName(exercise.name, exercise.catalogId)}`} render={<Button variant="ghost" size="icon" className="size-11 rounded-full" />}><MoreHorizontal /></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-44"><DropdownMenuItem className="min-h-11" disabled={index === 0} onClick={() => setPicked(current => moveItem(current, index, -1))}><ArrowUp /> Mover arriba</DropdownMenuItem><DropdownMenuItem className="min-h-11" disabled={index === picked.length - 1} onClick={() => setPicked(current => moveItem(current, index, 1))}><ArrowDown /> Mover abajo</DropdownMenuItem><DropdownMenuItem className="min-h-11" variant="destructive" onClick={() => remove(exercise.name)}><Trash2 /> Quitar ejercicio</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div><ExercisePrescriptionEditor defaultRest={defaultRest} exercise={exercise} onChange={updated => setPicked(current => current.map(item => item.name === exercise.name ? updated : item))} /></div>
+        <div key={exercise.name} className="space-y-2 border-b border-border py-4"><div className="flex items-center gap-3"><span className="text-xs font-semibold tabular-nums text-muted-foreground">{String(index + 1).padStart(2, '0')}</span><strong className="min-w-0 flex-1 text-base">{getExerciseDisplayName(exercise.name, exercise.catalogId)}</strong><DropdownMenu><DropdownMenuTrigger aria-label={`Opciones de ${getExerciseDisplayName(exercise.name, exercise.catalogId)}`} render={<Button variant="ghost" size="icon" className="size-11 rounded-full" />}><MoreHorizontal /></DropdownMenuTrigger><DropdownMenuContent align="end" className="min-w-44"><DropdownMenuItem className="min-h-11" disabled={index === 0} onClick={() => setPicked(current => moveItem(current, index, -1))}><ArrowUp /> Mover arriba</DropdownMenuItem><DropdownMenuItem className="min-h-11" disabled={index === picked.length - 1} onClick={() => setPicked(current => moveItem(current, index, 1))}><ArrowDown /> Mover abajo</DropdownMenuItem><DropdownMenuItem className="min-h-11" variant="destructive" onClick={() => remove(exercise.name)}><Trash2 /> Quitar ejercicio</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>
+          <ExercisePrescriptionEditor canLinkNext={index < picked.length - 1} defaultRest={defaultRest} exercise={exercise} onChange={updated => setPicked(current => current.map(item => item.name === exercise.name ? updated : item))} />
+        </div>
       ))}</div> : null}
 
       {!picked.length ? <p className="mb-4 text-sm text-muted-foreground">Añade los ejercicios de tu rutina y ajusta sus objetivos y descansos.</p> : null}
@@ -670,7 +665,7 @@ function ProgressView({ editable, state, updateState }: { editable: boolean; sta
   const totalWeeks = state.plan.length;
   const activeWeek = state.plan.find((week) => week.week === state.week);
   const planStatus = planProgress(state.plan, state.workoutLogs);
-  const performedExercises = state.exerciseLogs.filter(log => !log.skipped && log.sets.some(set => set.done));
+  const performedExercises = state.exerciseLogs.filter(log => !log.skipped && workingSets(log.sets).some(set => set.done));
   const painFree = performedExercises.length ? Math.round((performedExercises.filter(log => log.pain < 2).length / performedExercises.length) * 100) : null;
   const deleteWorkout = () => {
     if (!deletingWorkout) return;
@@ -737,7 +732,7 @@ function ProfileView({ editable, state, updateState, user, cloudReady, authBusy,
         {user ? <div className="flex items-center gap-3"><span className="grid size-12 place-items-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">{(user.displayName || user.email || 'U').slice(0, 1).toUpperCase()}</span><div className="min-w-0 flex-1"><strong className="block truncate">{user.displayName || 'Cuenta de Google'}</strong><small className="block truncate text-muted-foreground">{user.email}</small></div><Button aria-label="Cerrar sesión" className="size-11 rounded-xl" disabled={authBusy} onClick={onLogout} size="icon" variant="outline"><LogOut /></Button></div> : <div><div className="mb-4 flex gap-3"><span className="icon-tile"><Cloud /></span><div><strong className="block">Cuenta</strong><small className="text-muted-foreground">Inicia sesión para sincronizar entre dispositivos.</small></div></div><Button className="h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50" disabled={authBusy || !firebaseConfigured} onClick={onGoogleLogin}><span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">G</span>{authBusy ? 'Conectando…' : 'Continuar con Google'}</Button>{authError ? <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-300">{authError}</p> : null}</div>}
       </section>
       <section className="mt-4 rounded-2xl border border-border bg-card p-5"><div className="flex items-center justify-between gap-4"><div className="flex items-center gap-3"><span className="icon-tile">{user && cloudReady ? <Cloud /> : <CloudOff />}</span><div><strong className="block">Sincronización</strong><small className="text-muted-foreground">{user && cloudReady ? 'Sincronizado con la cuenta activa' : user ? 'Firebase pendiente · copia local disponible' : firebaseConfigured ? 'Solo en este dispositivo hasta iniciar sesión' : 'Sincronización no disponible'}</small></div></div><span className={`size-2.5 rounded-full ${user && cloudReady ? 'bg-emerald-500' : 'bg-amber-400'}`} /></div></section>
-      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Copia local</h2><p className="mt-2 text-sm text-muted-foreground">Firebase guarda tu plan y tu historial. Este navegador conserva una copia para consultarlos sin conexión. Para guardar cambios necesitas conexión.</p><p className="mt-2 text-sm">{state.plan.length} semanas · {state.sessions.length} rutinas · {state.workoutLogs.length} entrenamientos</p><Button className="mt-4 min-h-12 rounded-xl" onClick={exportBackup} variant="outline"><Download /> Descargar copia de seguridad</Button></section>
+      <section className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 className="font-bold">Copias de seguridad</h2><p className="mt-2 text-sm text-muted-foreground">Firebase guarda tu plan y tu historial. Este navegador conserva una copia para consultarlos sin conexión y los cambios pendientes hasta que se confirmen.</p><p className="mt-2 text-sm">{state.plan.length} semanas · {state.sessions.length} rutinas · {state.workoutLogs.length} entrenamientos</p><Button className="mt-4 min-h-12 rounded-xl" onClick={exportBackup} variant="outline"><Download /> Descargar copia de seguridad</Button><BackupImporter state={state} editable={editable} onImport={updateState} /></section>
       <section aria-labelledby="app-version-title" className="mt-4 rounded-2xl border border-border bg-card p-5"><h2 id="app-version-title" className="font-bold">Versión de la app</h2><p className="mt-2 text-sm font-semibold">v{appRelease.version}<span className="font-normal text-muted-foreground"> · {appRelease.build}</span></p><p className="mt-1 text-sm text-muted-foreground">Fecha de versión: <time dateTime={appRelease.builtAt}>{appRelease.date}</time> (Madrid)</p></section>
       </>}
     </div>
@@ -842,12 +837,16 @@ export default function HomePage() {
           setHydrated(true);
           return;
         }
+        const repository = createFirebaseRepository(user.uid);
         const store = new WorkoutPersistence({
           loadLocal: () => loadLocalState(user.uid),
           saveLocal: (value) => saveLocalState(value, user.uid),
           backup: (value, source) => backupLocalState(value, user.uid, source),
-          loadCloud: () => loadFromFirebase(user.uid),
-          saveCloud: (value, expectedVersion) => syncToFirebase(value, user.uid, expectedVersion),
+          loadCloud: repository.load,
+          saveCloud: repository.save,
+          subscribeCloud: repository.subscribe,
+          loadPending: () => loadPendingChanges(user.uid),
+          savePending: pending => savePendingChanges(user.uid, pending),
           onChange: (value, status) => {
             if (cancelled || sequence !== loadSequence.current) return;
             setState(value);
@@ -919,7 +918,7 @@ export default function HomePage() {
   const startSession = (week: number, routine: string) => {
     setPreferredRoutine(routine);
     setTrainingNotice('');
-    updateState((current) => ({ ...current, week }));
+    updateState((current) => current.week === week ? current : ({ ...current, week }));
     setTab('today');
     scrollContentToTop();
   };
@@ -931,6 +930,7 @@ export default function HomePage() {
       ...current,
       week: next?.week ?? current.week,
       workoutLogs: [...current.workoutLogs.filter((item) => item.id !== workout.id), workout],
+      activeWorkouts: (current.activeWorkouts ?? []).filter(item => item.id !== workout.id),
       exerciseLogs: exerciseLog ? [...current.exerciseLogs.filter((item) => item.id !== exerciseLog.id), exerciseLog] : current.exerciseLogs,
     }));
     if (next) {
@@ -943,7 +943,7 @@ export default function HomePage() {
     scrollContentToTop();
   };
 
-  const content = tab === 'today' ? <TodayView editable={persistenceStatus.canEdit} key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} onStartRest={startRest} onStopRest={stopRest} onOfferUndo={offerUndo} onClearUndo={dismissUndo} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView editable={persistenceStatus.canEdit} state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
+  const content = tab === 'today' ? <TodayView accountId={firebaseUser?.uid ?? ''} editable={persistenceStatus.canEdit} key={`${state.week}:${preferredRoutine}`} state={state} updateState={updateState} onOpenSessions={() => setTab('plan')} preferredRoutine={preferredRoutine} onFinish={finishSession} notice={trainingNotice} onStartRest={startRest} onStopRest={stopRest} onOfferUndo={offerUndo} onClearUndo={dismissUndo} /> : tab === 'plan' ? <PlanView state={state} updateState={updateState} onStartSession={startSession} /> : tab === 'progress' ? <ProgressView editable={persistenceStatus.canEdit} state={state} updateState={updateState} /> : tab === 'mobility' ? <MobilityView state={state} updateState={updateState} /> : <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} />;
 
   if (!hydrated) return <main className="grid min-h-dvh place-items-center bg-background px-6 text-foreground"><div className="text-center"><span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground"><HeartPulse className="size-7" /></span><p className="text-sm text-muted-foreground">Comprobando acceso…</p></div></main>;
   if (!firebaseUser || firebaseUser.isAnonymous) return (
@@ -974,7 +974,7 @@ export default function HomePage() {
             {updateAvailable && tab === 'today' ? <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3"><span className="text-sm font-medium">Nueva versión disponible</span><Button className="min-h-10 shrink-0 rounded-lg" onClick={() => window.location.reload()} size="sm" variant="outline">Actualizar</Button></output> : null}
             {tab === 'timers' ? <div className="section-heading"><div><h1 className="page-title">Timer</h1><p className="page-subtitle">Tu ritmo, sin distracciones</p></div></div> : null}
             <div className={tab === 'timers' ? '' : 'hidden'}><WorkoutTimer /></div>
-            {persistenceStatus.error ? <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{persistenceStatus.local === 'error' ? 'No se ha podido guardar en este dispositivo.' : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'} <span className="block text-xs">{persistenceStatus.error}</span></p> : null}
+            {persistenceStatus.conflicts?.length ? <SyncConflicts key={JSON.stringify(persistenceStatus.conflicts)} state={state} conflicts={persistenceStatus.conflicts} onResolve={choices => persistence.current?.resolveConflicts(choices) ?? Promise.resolve()} /> : persistenceStatus.error ? <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">{persistenceStatus.local === 'error' ? 'No se ha podido guardar en este dispositivo.' : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'} <span className="block text-xs">{persistenceStatus.error}</span></p> : null}
             {!persistenceStatus.canEdit && !persistenceStatus.error ? <output className="mb-4 block text-sm text-muted-foreground">Conectando con Firebase. La copia local se muestra en modo lectura.</output> : null}
             <fieldset disabled={!persistenceStatus.canEdit && tab !== 'profile'} className="min-w-0">
             {tab === 'timers' ? null : tab === 'profile' ? <ProfileView editable={persistenceStatus.canEdit} authBusy={authBusy} authError={authError} cloudReady={cloudReady} onGoogleLogin={handleGoogleLogin} onLogout={handleLogout} state={state} updateState={updateState} user={firebaseUser} /> : content}

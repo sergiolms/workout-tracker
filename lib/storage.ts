@@ -1,9 +1,11 @@
 import type { Exercise } from './workout-data';
+import { statusFromLog } from './exercise-sets.ts';
 
-export type SetLog = { reps: number; done: boolean };
+export type SetLog = { reps: number; done: boolean; load?: number; kind?: 'work' | 'warmup' };
 export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
 export type WorkoutExerciseStatus = 'done' | 'partial' | 'skipped' | 'pending';
 export type WorkoutLog = { id: string; date: string; week: number; routine: string; routineName: string; exercises: Array<{ name: string; status: WorkoutExerciseStatus; logId?: string }>; notes: string };
+export type ActiveWorkout = { id: string; date: string; week: number; routine: string; startedAt: string; finishedAt?: string };
 export type CardioLog = { id: string; date: string; type: string; minutes: number; distance?: number; steps?: number; stepsEstimated?: boolean; stepLengthCm?: number; rpe?: number; heartRate?: number };
 export type Measurement = { id: string; date: string; weight?: number; waist?: number; restingHr?: number; sleep?: number; energy?: number; pain?: number };
 
@@ -15,11 +17,13 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export type AppState = {
   version: 3;
   updatedAt?: string;
+  cloudRevision?: number;
   week: number;
   planName: string;
   periods: PlanPeriod[];
   sessions: Session[];
   workoutLogs: WorkoutLog[];
+  activeWorkouts?: ActiveWorkout[];
   plan: PlanWeek[];
   exerciseLogs: ExerciseLog[];
   cardioLogs: CardioLog[];
@@ -44,18 +48,18 @@ export function weeksFromPeriods(periods: PlanPeriod[]): PlanWeek[] {
   })));
 }
 
-function workoutsFromExerciseLogs(logs: ExerciseLog[], sessions: Session[]): WorkoutLog[] {
+function workoutsFromExerciseLogs(logs: ExerciseLog[], sessions: Session[], existing: WorkoutLog[]): WorkoutLog[] {
   const groups = new Map<string, WorkoutLog>();
+  const linked = new Map(existing.flatMap(workout => workout.exercises.flatMap(item => item.logId ? [[item.logId, workout.id] as const] : [])));
   for (const log of logs) {
-    const day = new Date(log.date).toLocaleDateString('en-CA');
-    const id = log.workoutId || `${day}:${log.week}:${log.routine}`;
+    const day = new Date(log.date).toISOString().slice(0, 10);
+    const id = log.workoutId || linked.get(log.id) || `${day}:${log.week}:${log.routine}`;
     const workout = groups.get(id) ?? {
       id, date: log.date, week: log.week, routine: log.routine,
       routineName: sessions.find((session) => session.id === log.routine)?.name ?? log.routine,
       exercises: [], notes: '',
     };
-    const doneSets = log.sets.filter((set) => set.done).length;
-    const status: WorkoutExerciseStatus = log.skipped ? 'skipped' : doneSets === log.sets.length && doneSets > 0 ? 'done' : doneSets ? 'partial' : 'pending';
+    const status = statusFromLog(log);
     workout.exercises = [...workout.exercises.filter((item) => item.name !== log.exercise), { name: log.exercise, status, logId: log.id }];
     groups.set(id, workout);
   }
@@ -99,7 +103,8 @@ export function migrateState(raw: unknown): AppState | null {
   const exerciseLogs = Array.isArray(value.exerciseLogs) ? value.exerciseLogs : [];
   const workoutLogs = Array.isArray(value.workoutLogs) ? value.workoutLogs : [];
   const existingWorkoutIds = new Set(workoutLogs.map((workout) => workout.id));
-  const migratedWorkouts = workoutsFromExerciseLogs(exerciseLogs, sessions).filter((workout) => !existingWorkoutIds.has(workout.id));
+  const activeIds = new Set((value.activeWorkouts ?? []).filter(item => !item.finishedAt).map(item => item.id));
+  const migratedWorkouts = workoutsFromExerciseLogs(exerciseLogs, sessions, workoutLogs).filter((workout) => !existingWorkoutIds.has(workout.id) && !activeIds.has(workout.id));
   return {
     ...defaultState,
     ...value,
@@ -111,6 +116,7 @@ export function migrateState(raw: unknown): AppState | null {
     sessions,
     exerciseLogs,
     workoutLogs: [...workoutLogs, ...migratedWorkouts],
+    ...(Array.isArray(value.activeWorkouts) ? { activeWorkouts: value.activeWorkouts } : {}),
     cardioLogs: Array.isArray(value.cardioLogs) ? value.cardioLogs : [],
     measurements: Array.isArray(value.measurements) ? value.measurements : [],
     mobilityDone: Array.isArray(value.mobilityDone) ? value.mobilityDone : [],
@@ -161,6 +167,26 @@ export async function saveLocalState(state: AppState, uid?: string): Promise<voi
     transaction.oncomplete = () => { db.close(); resolve(); };
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error ?? new Error('Guardado cancelado'));
+  });
+}
+
+export async function loadPendingChanges(uid: string): Promise<{ base: AppState; state: AppState } | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(`pending:${uid}`);
+    request.onsuccess = () => { db.close(); const value = request.result; const base = migrateState(value?.base); const state = migrateState(value?.state); resolve(base && state ? { base, state } : null); };
+    request.onerror = () => { db.close(); reject(request.error); };
+  });
+}
+
+export async function savePendingChanges(uid: string, pending: { base: AppState; state: AppState } | null): Promise<void> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    if (pending) tx.objectStore(STORE_NAME).put(pending, `pending:${uid}`); else tx.objectStore(STORE_NAME).delete(`pending:${uid}`);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? Error('No se ha guardado la cola de cambios')); };
   });
 }
 
