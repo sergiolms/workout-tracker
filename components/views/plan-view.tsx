@@ -211,7 +211,14 @@ export function PlanView({
   if (building)
     return (
       <SessionBuilder
-        customExercises={[...new Map(state.sessions.flatMap(session => session.exercises).filter(exercise => exercise.id?.startsWith('custom:')).map(exercise => [exercise.id, exercise])).values()]}
+        customExercises={[
+          ...new Map(
+            state.sessions
+              .flatMap((session) => session.exercises)
+              .filter((exercise) => exercise.id?.startsWith('custom:'))
+              .map((exercise) => [exercise.id, exercise]),
+          ).values(),
+        ]}
         defaultRest={{
           restEnabled: state.restEnabled,
           restSeconds: state.restSeconds,
@@ -254,8 +261,12 @@ export function PlanView({
           { id: 'structure', label: 'Tramos' },
         ]}
       />
-      {view === 'routines' ? <PlanSharing state={state} updateState={updateState} /> : null}
-      {view === 'routines' ? <RotationSettings state={state} updateState={updateState} /> : null}
+      {view === 'routines' ? (
+        <PlanSharing state={state} updateState={updateState} />
+      ) : null}
+      {view === 'routines' ? (
+        <RotationSettings state={state} updateState={updateState} />
+      ) : null}
       <Dialog
         open={planNameDraft !== null}
         onOpenChange={(open) => {

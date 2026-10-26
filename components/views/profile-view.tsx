@@ -206,7 +206,11 @@ export function ProfileView({
           </section>
           <section className="mt-4 rounded-2xl border border-border bg-card p-5">
             <h2 className="font-bold">Copias de seguridad</h2>
-            <RecordTrash state={state} updateState={updateState} editable={editable} />
+            <RecordTrash
+              state={state}
+              updateState={updateState}
+              editable={editable}
+            />
             <p className="mt-2 text-sm text-muted-foreground">
               Firebase guarda tu plan y tu historial. Este navegador conserva
               una copia para consultarlos sin conexión y los cambios pendientes

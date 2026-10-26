@@ -4,7 +4,10 @@ import { Check, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Stepper } from '@/components/number-stepper';
 import { OptionalSection } from '@/components/optional-section';
-import { ActivityTypePicker, DurationPicker } from '@/components/activity-controls';
+import {
+  ActivityTypePicker,
+  DurationPicker,
+} from '@/components/activity-controls';
 import { ActivityEstimates } from '@/components/activity-estimates';
 import { activityEstimates } from '@/lib/activity-estimates';
 import { EffortSelector } from '@/components/effort-selector';
@@ -171,4 +174,3 @@ export function CardioForm({
     </section>
   );
 }
-

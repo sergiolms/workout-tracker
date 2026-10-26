@@ -24,7 +24,15 @@ export type Exercise = {
   image?: string;
 };
 
-const exercise = (name: string, target: string, sets: number, minReps: number, maxReps: number, increment = 2.5, unit = 'kg'): Exercise => ({ name, target, sets, minReps, maxReps, increment, unit });
+const exercise = (
+  name: string,
+  target: string,
+  sets: number,
+  minReps: number,
+  maxReps: number,
+  increment = 2.5,
+  unit = 'kg',
+): Exercise => ({ name, target, sets, minReps, maxReps, increment, unit });
 
 export const routines: Record<RoutineId, Exercise[]> = {
   A1: [
@@ -78,11 +86,25 @@ export const routines: Record<RoutineId, Exercise[]> = {
     exercise('Press pecho', '3×6–10 · RIR 1–2', 3, 6, 10),
     exercise('Remo sentado', '3×8–10 · RIR 1–2', 3, 8, 10),
     exercise('Jalón al pecho', '2×8–12 · RIR 1–2', 2, 8, 12),
-    exercise('Farmer carry pesado', '3×30–60 m · RIR 1–2', 3, 30, 60, 1, 'kg/m'),
+    exercise(
+      'Farmer carry pesado',
+      '3×30–60 m · RIR 1–2',
+      3,
+      30,
+      60,
+      1,
+      'kg/m',
+    ),
     exercise('Levantarse del suelo', '1×5 · Fluido', 1, 5, 5, 1, 'reps'),
   ],
   B3: [
-    exercise('Step-up alto / split squat asistido', '3×8–10 · RIR 1–2', 3, 8, 10),
+    exercise(
+      'Step-up alto / split squat asistido',
+      '3×8–10 · RIR 1–2',
+      3,
+      8,
+      10,
+    ),
     exercise('Hip thrust', '3×6–10 · RIR 1–2', 3, 6, 10),
     exercise('Press hombro', '3×6–10 · RIR 1–2', 3, 6, 10),
     exercise('Remo unilateral', '3×8–12 · RIR 1–2', 3, 8, 12),
@@ -101,7 +123,11 @@ export const routines: Record<RoutineId, Exercise[]> = {
   ],
 };
 
-export const warmup = ['3–5 min de cardio suave', 'Movilidad de tobillo y cadera', '2 series de aproximación'];
+export const warmup = [
+  '3–5 min de cardio suave',
+  'Movilidad de tobillo y cadera',
+  '2 series de aproximación',
+];
 export const mobility = [
   ['Rodilla a pared / dorsiflexión', '2×8/lado', 'Tobillos'],
   ['Flexor de cadera', '2×30 s/lado', 'Cadera'],
@@ -113,4 +139,3 @@ export const mobility = [
   ['Rotación torácica cuadrupedia', '2×8/lado', 'Tórax'],
   ['Bajar al suelo y levantarse', '5 reps', 'Funcional'],
 ] as const;
-

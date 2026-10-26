@@ -1,5 +1,11 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   createFirebaseRepository,
   signInWithGoogle,
@@ -21,18 +27,34 @@ import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { createWalkLog } from '@/lib/walk-log';
 
 export function useWorkoutAccount() {
-  const [state, setState] = useState<AppState>(defaultState);
+  const [accountStore, setAccountStore] = useState<WorkoutPersistence | null>(
+    null,
+  );
   const [hydrated, setHydrated] = useState(false);
-  const [cloudReady, setCloudReady] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
   const loadSequence = useRef(0);
   const persistence = useRef<WorkoutPersistence | null>(null);
-  const [persistenceStatus, setPersistenceStatus] = useState<PersistenceStatus>(
-    { local: 'saved', cloud: 'pending', canEdit: false, error: '' },
+  const [fallbackStatus, setFallbackStatus] = useState<PersistenceStatus>({
+    local: 'saved',
+    cloud: 'pending',
+    canEdit: false,
+    error: '',
+  });
+  const subscribe = useCallback(
+    (listener: () => void) => accountStore?.subscribe(listener) ?? (() => {}),
+    [accountStore],
   );
+  const getSnapshot = useCallback(
+    () => accountStore?.getSnapshot() ?? null,
+    [accountStore],
+  );
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => null);
+  const state = snapshot?.state ?? defaultState;
+  const persistenceStatus = snapshot?.status ?? fallbackStatus;
+  const cloudReady = persistenceStatus.cloud === 'synced';
+  const syncing = persistenceStatus.local === 'saving';
   const updateState = useCallback(
     (updater: (state: AppState) => AppState) =>
       persistence.current?.update(updater),
@@ -47,9 +69,8 @@ export function useWorkoutAccount() {
         const sequence = ++loadSequence.current;
         try {
           setHydrated(false);
-          setCloudReady(false);
-          setState(defaultState);
-          setPersistenceStatus({
+          setAccountStore(null);
+          setFallbackStatus({
             local: 'saved',
             cloud: 'pending',
             canEdit: false,
@@ -60,7 +81,6 @@ export function useWorkoutAccount() {
           setFirebaseUser(user);
           if (!user || user.isAnonymous) {
             if (cancelled || sequence !== loadSequence.current) return;
-            setState(defaultState);
             setHydrated(true);
             return;
           }
@@ -75,15 +95,9 @@ export function useWorkoutAccount() {
             subscribeCloud: repository.subscribe,
             loadPending: () => loadPendingChanges(user.uid),
             savePending: (pending) => savePendingChanges(user.uid, pending),
-            onChange: (value, status) => {
-              if (cancelled || sequence !== loadSequence.current) return;
-              setState(value);
-              setPersistenceStatus(status);
-              setCloudReady(status.cloud === 'synced');
-              setSyncing(status.local === 'saving');
-            },
           });
           persistence.current = store;
+          setAccountStore(store);
           await store.initialize();
           if (cancelled || sequence !== loadSequence.current) {
             store.dispose();
@@ -98,7 +112,7 @@ export function useWorkoutAccount() {
               ? reason.message
               : 'No se pudo cargar la cuenta.';
           setAuthError(error);
-          setPersistenceStatus({
+          setFallbackStatus({
             local: 'saved',
             cloud: 'error',
             canEdit: false,
@@ -162,7 +176,10 @@ export function useWorkoutAccount() {
           },
           annotations: { readOnlyHint: false, untrustedContentHint: false },
           execute: (input: unknown) => {
-            if (accountSequence !== loadSequence.current || !persistence.current?.status.canEdit)
+            if (
+              accountSequence !== loadSequence.current ||
+              !persistence.current?.status.canEdit
+            )
               throw new Error(
                 'Conecta con Firebase antes de registrar una caminata.',
               );
@@ -203,9 +220,7 @@ export function useWorkoutAccount() {
   const handleLogout = async () => {
     setAuthBusy(true);
     setAuthError('');
-    const previousCloudReady = cloudReady;
     setHydrated(false);
-    setCloudReady(false);
     try {
       await persistence.current?.flushLocal();
       await signOutFirebase();
@@ -218,7 +233,6 @@ export function useWorkoutAccount() {
       }
     } catch {
       setAuthError('No se pudo cerrar la sesión.');
-      setCloudReady(previousCloudReady);
       setHydrated(true);
     } finally {
       setAuthBusy(false);

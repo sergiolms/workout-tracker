@@ -36,11 +36,47 @@ const string = (value: unknown) =>
   typeof value === 'string' && value.length <= 10000;
 
 function validateExerciseMetadata(value: Record<string, unknown>) {
-  if (value.progression !== undefined && value.progression !== 'off' && value.progression !== 'double') fail('política de progresión incorrecta.');
-  if (value.mode !== undefined && (typeof value.mode !== 'string' || !['reps', 'time'].includes(value.mode))) fail('modalidad de ejercicio incorrecta.');
-  if (value.loadKind !== undefined && (typeof value.loadKind !== 'string' || !['total', 'perHand', 'added', 'assistance', 'none'].includes(value.loadKind))) fail('criterio de carga incorrecto.');
-  if (value.targetSeconds !== undefined && !number(value.targetSeconds, 1, 86400)) fail('tiempo objetivo incorrecto.');
-  for (const key of ['exerciseId', 'unit', 'catalogId']) { const field = value[key]; if (field !== undefined && (typeof field !== 'string' || field.length > 500)) fail('identidad de ejercicio incorrecta.'); }
+  if (
+    value.progression !== undefined &&
+    value.progression !== 'off' &&
+    value.progression !== 'double'
+  )
+    fail('política de progresión incorrecta.');
+  if (
+    value.mode !== undefined &&
+    (typeof value.mode !== 'string' || !['reps', 'time'].includes(value.mode))
+  )
+    fail('modalidad de ejercicio incorrecta.');
+  if (
+    value.loadKind !== undefined &&
+    (typeof value.loadKind !== 'string' ||
+      !['total', 'perHand', 'added', 'assistance', 'none'].includes(
+        value.loadKind,
+      ))
+  )
+    fail('criterio de carga incorrecto.');
+  if (
+    value.targetSeconds !== undefined &&
+    !number(value.targetSeconds, 1, 86400)
+  )
+    fail('tiempo objetivo incorrecto.');
+  for (const key of ['exerciseId', 'unit', 'catalogId', 'id']) {
+    const field = value[key];
+    if (
+      field !== undefined &&
+      (typeof field !== 'string' || field.length > 500)
+    )
+      fail('identidad de ejercicio incorrecta.');
+  }
+  if (
+    value.image !== undefined &&
+    (typeof value.image !== 'string' ||
+      (!/^[a-zA-Z0-9_-]+\.(jpg|jpeg|webp|png)$/.test(value.image) &&
+        !/^data:image\/(webp|jpeg|png);base64,[a-zA-Z0-9+/=]+$/.test(
+          value.image,
+        )))
+  )
+    fail('imagen de ejercicio incorrecta.');
 }
 
 export function parseBackup(text: string): AppState {
@@ -102,8 +138,23 @@ export function parseBackup(text: string): AppState {
         fail(`fecha incorrecta en ${key}.`);
       if (key === 'trash') {
         if (!string(item.label)) fail('registro eliminado incorrecto.');
-        for (const field of ['workoutLogs', 'exerciseLogs', 'cardioLogs', 'measurements']) if (!Array.isArray(item[field])) fail('contenido de papelera incorrecto.');
-        parseBackup(JSON.stringify({ ...defaultState, workoutLogs: item.workoutLogs, exerciseLogs: item.exerciseLogs, cardioLogs: item.cardioLogs, measurements: item.measurements }));
+        for (const field of [
+          'workoutLogs',
+          'exerciseLogs',
+          'cardioLogs',
+          'measurements',
+        ])
+          if (!Array.isArray(item[field]))
+            fail('contenido de papelera incorrecto.');
+        parseBackup(
+          JSON.stringify({
+            ...defaultState,
+            workoutLogs: item.workoutLogs,
+            exerciseLogs: item.exerciseLogs,
+            cardioLogs: item.cardioLogs,
+            measurements: item.measurements,
+          }),
+        );
       }
       if (key === 'sessions') {
         if (
@@ -240,7 +291,9 @@ export function parseBackup(text: string): AppState {
 
 export function backupPreview(current: AppState, incoming: AppState) {
   return historyKeys.map((key) => {
-    const existing = new Map((current[key] ?? []).map((item) => [item.id, item]));
+    const existing = new Map(
+      (current[key] ?? []).map((item) => [item.id, item]),
+    );
     const additions = (incoming[key] ?? []).filter(
       (item) => !existing.has(item.id),
     ).length;

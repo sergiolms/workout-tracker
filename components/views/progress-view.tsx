@@ -49,9 +49,9 @@ export function ProgressView({
   state: AppState;
   updateState: (updater: (state: AppState) => AppState) => void;
 }) {
-  const [view, setView] = useState<'overview' | 'exercises' | 'measurements' | 'history'>(
-    'overview',
-  );
+  const [view, setView] = useState<
+    'overview' | 'exercises' | 'measurements' | 'history'
+  >('overview');
   const [historyKind, setHistoryKind] = useState<'workouts' | 'activities'>(
     'workouts',
   );
@@ -89,7 +89,10 @@ export function ProgressView({
   const activeWeek = state.plan.find((week) => week.week === state.week);
   const planStatus = planProgress(state.plan, state.workoutLogs);
   const performedExercises = state.exerciseLogs.filter(
-    (log) => !log.skipped && workingSets(log.sets).some((set) => set.done),
+    (log) =>
+      !log.skipped &&
+      !log.painUnknown &&
+      workingSets(log.sets).some((set) => set.done),
   );
   const painFree = performedExercises.length
     ? Math.round(
@@ -100,7 +103,9 @@ export function ProgressView({
     : null;
   const deleteWorkout = () => {
     if (!deletingWorkout) return;
-    updateState((current) => moveToTrash(current, 'workoutLogs', deletingWorkout.id));
+    updateState((current) =>
+      moveToTrash(current, 'workoutLogs', deletingWorkout.id),
+    );
     setDeletingWorkout(null);
   };
   return (
@@ -198,24 +203,32 @@ export function ProgressView({
             ]}
           />
           {historyKind === 'workouts' ? (
-            <><PastWorkoutRecorder state={state} editable={editable} updateState={updateState} /><HistoryBrowser
-              title="Historial de entrenamientos"
-              entries={state.workoutLogs}
-              searchText={(log) =>
-                [
-                  log.routineName,
-                  log.notes,
-                  ...log.exercises.map((item) => item.name),
-                ].join(' ')
-              }
-              renderEntry={(workout) => (
-                <WorkoutHistoryEntry
-                  workout={workout}
-                  onEdit={() => setEditingWorkout(workout)}
-                  onDelete={() => setDeletingWorkout(workout)}
-                />
-              )}
-            /></>
+            <>
+              <PastWorkoutRecorder
+                state={state}
+                editable={editable}
+                updateState={updateState}
+              />
+              <HistoryBrowser
+                title="Historial de entrenamientos"
+                entries={state.workoutLogs}
+                searchText={(log) =>
+                  [
+                    log.routineName,
+                    log.notes,
+                    ...log.exercises.map((item) => item.name),
+                  ].join(' ')
+                }
+                renderEntry={(workout) => (
+                  <WorkoutHistoryEntry
+                    state={state}
+                    workout={workout}
+                    onEdit={() => setEditingWorkout(workout)}
+                    onDelete={() => setDeletingWorkout(workout)}
+                  />
+                )}
+              />
+            </>
           ) : (
             <HistoryBrowser
               title="Actividad registrada"
@@ -296,7 +309,8 @@ export function ProgressView({
           <DialogTitle>¿Borrar este entrenamiento?</DialogTitle>
           <DialogDescription>
             Se eliminará esta sesión y los registros de ejercicios vinculados.
-            Podrás restaurarlos desde Registros eliminados, en Progreso o Perfil.
+            Podrás restaurarlos desde Registros eliminados, en Progreso o
+            Perfil.
           </DialogDescription>
           <div className="mt-4 flex justify-end gap-2">
             <Button onClick={() => setDeletingWorkout(null)} variant="outline">
@@ -311,7 +325,11 @@ export function ProgressView({
           </div>
         </DialogContent>
       </Dialog>
-      <RecordTrash state={state} updateState={updateState} editable={editable} />
+      <RecordTrash
+        state={state}
+        updateState={updateState}
+        editable={editable}
+      />
     </div>
   );
 }

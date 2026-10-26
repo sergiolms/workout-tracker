@@ -280,6 +280,7 @@ export async function parseHevyCsv(
       sets: [],
       rir: 0,
       effortUnknown: true,
+      painUnknown: true,
       pain: 0,
       note: 'Importado de Hevy. RIR y molestias no registrados.',
       suggestion: 'mantener',
@@ -328,7 +329,12 @@ export async function parseHevyCsv(
     workouts.set(workoutId, workout);
   }
   state.workoutLogs = [...workouts.values()];
-  state.exerciseLogs = [...logs.values()].map(log => ({ ...log, mode: log.sets.every(set => set.reps === 0 && set.seconds !== undefined) ? 'time' : 'reps' }));
+  state.exerciseLogs = [...logs.values()].map((log) => ({
+    ...log,
+    mode: log.sets.every((set) => set.reps === 0 && set.seconds !== undefined)
+      ? 'time'
+      : 'reps',
+  }));
   if (
     isMeasurement &&
     keys.some(

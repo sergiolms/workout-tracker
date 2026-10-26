@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
-  Wind,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useId } from 'react';
 import { Button } from '@/components/ui/button';
@@ -65,9 +64,13 @@ import { MotionSurface, AnimatedDisclosure } from '@/components/motion-surface';
 import { ProgressRing } from '@/components/progress-ring';
 import { Stepper } from '@/components/number-stepper';
 import { localDateKey, uid } from '@/lib/local-date';
-import { CardioForm } from '@/components/activity-form';
+import { TodayActivities } from '@/components/today-activities';
 import { ExercisePreview } from '@/components/exercises/exercise-media';
-import { exerciseLogMetadata, sameExercise } from '@/lib/exercise-identity';
+import {
+  exerciseForLog,
+  exerciseLogMetadata,
+  sameExercise,
+} from '@/lib/exercise-identity';
 import { ExerciseHistory } from '@/components/exercise-history';
 import { nextRotationRoutine, rotationRoutines } from '@/lib/rotation';
 
@@ -131,7 +134,26 @@ export function TodayView({
     month: 'long',
   }).format(new Date());
   const compact = state.workoutView === 'compact';
-  const weekPlan = useMemo(() => state.rotation ? { week: state.week, block: 'Rotación', routines: rotationRoutines(state), sessions: rotationRoutines(state).length, cardio: '', walks: '', mobility: '', optionalClass: '', deload: false, periodId: '', periodWeek: 1 } : state.plan.find((week) => week.week === state.week) ?? state.plan[0], [state]);
+  const weekPlan = useMemo(
+    () =>
+      state.rotation
+        ? {
+            week: state.week,
+            block: 'Rotación',
+            routines: rotationRoutines(state),
+            sessions: rotationRoutines(state).length,
+            cardio: '',
+            walks: '',
+            mobility: '',
+            optionalClass: '',
+            deload: false,
+            periodId: '',
+            periodWeek: 1,
+          }
+        : (state.plan.find((week) => week.week === state.week) ??
+          state.plan[0]),
+    [state],
+  );
   const sessionById = useMemo(
     () => new Map(state.sessions.map((session) => [session.id, session])),
     [state.sessions],
@@ -143,30 +165,30 @@ export function TodayView({
   const [routineId, setRoutineId] = useState<string>(
     preferredRoutine && routineIds.includes(preferredRoutine)
       ? preferredRoutine
-      : (nextRotationRoutine(state) ?? routineIds.find(
-          (id) =>
-            !completedPlanSlots(state.workoutLogs).has(`${state.week}:${id}`),
-        ) ??
+      : (nextRotationRoutine(state) ??
+          routineIds.find(
+            (id) =>
+              !completedPlanSlots(state.workoutLogs).has(`${state.week}:${id}`),
+          ) ??
           routineIds[0] ??
           ''),
   );
   const [exerciseIndex, setExerciseIndex] = useState(0);
   const sessionExercises = sessionById.get(routineId)?.exercises ?? [];
-  const exercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
+  const templateExercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
   const day = localDateKey();
   const [instanceSeed, setInstanceSeed] = useState(uid);
   const resumedWorkout = activeWorkout(state, state.week, routineId);
   const workoutId = resumedWorkout?.id ?? `${instanceSeed}:${routineId}`;
-  const lastLog = previousExerciseLog(
-    state.exerciseLogs,
-    exercise,
-    workoutId,
-  );
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
   const routineLogs = state.exerciseLogs.filter(
     (log) => log.workoutId === workoutId,
   );
-  const currentLog = routineLogs.find((log) => sameExercise(log, exercise));
+  const currentLog = routineLogs.find((log) =>
+    sameExercise(log, templateExercise),
+  );
+  const exercise = exerciseForLog(templateExercise, currentLog);
+  const lastLog = previousExerciseLog(state.exerciseLogs, exercise, workoutId);
   const sets = exerciseSets(exercise, currentLog, lastLog);
   const load =
     currentLog?.load ?? lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20);
@@ -233,7 +255,6 @@ export function TodayView({
     getExerciseDescription(exercise.name, exercise.catalogId);
   const [showNotes, setShowNotes] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showCardio, setShowCardio] = useState(false);
   const [showExercises, setShowExercises] = useState(false);
   const [saved, setSaved] = useState(false);
   const [confirmUnmarked, setConfirmUnmarked] = useState(false);
@@ -341,6 +362,7 @@ export function TodayView({
           </Button>
         </section>
         <WarmupCard state={state} updateState={updateState} />
+        <TodayActivities state={state} updateState={updateState} />
       </div>
     );
   if (!routineIds.length)
@@ -367,6 +389,7 @@ export function TodayView({
           </Button>
         </section>
         <WarmupCard state={state} updateState={updateState} />
+        <TodayActivities state={state} updateState={updateState} />
       </div>
     );
 
@@ -588,6 +611,10 @@ export function TodayView({
         onOpenChange={setFinishReview}
         items={review.workout.exercises.map((item, index) => ({
           ...item,
+          image:
+            sessionExercises[index]?.image ??
+            getExerciseDetails(item.name, sessionExercises[index]?.catalogId)
+              ?.image,
           name: getExerciseDisplayName(
             item.name,
             sessionExercises[index]?.catalogId,
@@ -634,7 +661,8 @@ export function TodayView({
                   }}
                   type="button"
                 >
-                  {!state.rotation && completedPlanSlots(state.workoutLogs).has(
+                  {!state.rotation &&
+                  completedPlanSlots(state.workoutLogs).has(
                     `${state.week}:${id}`,
                   )
                     ? '✓ '
@@ -678,7 +706,9 @@ export function TodayView({
           dark={dark}
           items={sessionExercises.map((item) => ({
             name: getExerciseDisplayName(item.name, item.catalogId),
-            image: getExerciseDetails(item.name, item.catalogId)?.image,
+            image:
+              item.image ??
+              getExerciseDetails(item.name, item.catalogId)?.image,
             status: doneNames.has(item.name)
               ? 'done'
               : routineLogs.find((log) => log.exercise === item.name)?.skipped
@@ -713,14 +743,31 @@ export function TodayView({
         className={`exercise-card ${saved ? 'ring-2 ring-emerald-500/40' : ''}`}
       >
         <MotionSurface motionKey={exercise.name}>
-          <div className="flex justify-end border-b border-border px-4 py-1"><Button variant="ghost" className="min-h-11 text-sm" disabled={!editable} aria-pressed={compact} onClick={() => updateState(current => ({ ...current, workoutView: compact ? 'guided' : 'compact' }))}>{compact ? 'Mostrar imagen y detalles' : 'Solo series'}</Button></div>
+          <div className="flex justify-end border-b border-border px-4 py-1">
+            <Button
+              variant="ghost"
+              className="min-h-11 text-sm"
+              disabled={!editable}
+              aria-pressed={compact}
+              onClick={() =>
+                updateState((current) => ({
+                  ...current,
+                  workoutView: compact ? 'guided' : 'compact',
+                }))
+              }
+            >
+              {compact ? 'Mostrar imagen y detalles' : 'Solo series'}
+            </Button>
+          </div>
           <div className={compact ? 'p-4 sm:p-5' : 'exercise-overview'}>
-            {!compact ? <ExercisePreview
-              key={exercise.name}
-              image={exercise.image || details?.image}
-              name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
-              description={description}
-            /> : null}
+            {!compact ? (
+              <ExercisePreview
+                key={exercise.name}
+                image={exercise.image || details?.image}
+                name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
+                description={description}
+              />
+            ) : null}
             <div className="min-w-0">
               <p className="eyebrow">
                 Ejercicio {exerciseIndex + 1} / {sessionExercises.length}
@@ -731,15 +778,38 @@ export function TodayView({
               <p className="mt-3 text-sm font-semibold text-primary">
                 {exercise.target}
               </p>
-              {!compact ? <p className="mt-2 text-xs text-muted-foreground">
-                Toca la imagen para ver la técnica
-              </p> : null}
+              {!compact ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Toca la imagen para ver la técnica
+                </p>
+              ) : null}
             </div>
           </div>
 
           <div className="p-4 sm:p-5">
-            <Button variant="ghost" className="mb-3 min-h-11 px-0 underline underline-offset-4" onClick={() => setShowHistory(true)}>Historial del ejercicio</Button>
-            <Dialog open={showHistory} onOpenChange={setShowHistory}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"><DialogTitle>{getExerciseDisplayName(exercise.name, exercise.catalogId)}</DialogTitle><DialogDescription>Series de trabajo de sesiones anteriores. Las aproximaciones no cuentan.</DialogDescription><ExerciseHistory state={state} exercise={exercise} excludeWorkoutId={workoutId} /></DialogContent></Dialog>
+            <Button
+              variant="ghost"
+              className="mb-3 min-h-11 px-0 underline underline-offset-4"
+              onClick={() => setShowHistory(true)}
+            >
+              Historial del ejercicio
+            </Button>
+            <Dialog open={showHistory} onOpenChange={setShowHistory}>
+              <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+                <DialogTitle>
+                  {getExerciseDisplayName(exercise.name, exercise.catalogId)}
+                </DialogTitle>
+                <DialogDescription>
+                  Series de trabajo de sesiones anteriores. Las aproximaciones
+                  no cuentan.
+                </DialogDescription>
+                <ExerciseHistory
+                  state={state}
+                  exercise={exercise}
+                  excludeWorkoutId={workoutId}
+                />
+              </DialogContent>
+            </Dialog>
             {exercise.unit !== 'reps' ? (
               <div className="mb-5">
                 <OptionalSection
@@ -783,6 +853,10 @@ export function TodayView({
               </p>
             ) : null}
             <ExerciseSetEditor
+              barbell={
+                details?.equipment === 'barbell' ||
+                details?.equipment === 'ez barbell'
+              }
               name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
               mode={exercise.mode}
               loadKind={exercise.loadKind}
@@ -812,56 +886,67 @@ export function TodayView({
               }}
             />
 
-            <details key={compact ? 'compact' : 'guided'} open={compact ? undefined : true} className="mt-4"><summary hidden={!compact} className="min-h-11 cursor-pointer py-3 text-sm font-medium">Opciones y sensaciones</summary>
-            <div>
-              <RestSettings
-                enabled={rest.enabled}
-                seconds={rest.seconds}
-                disabled={!editable}
-                onEnabledChange={(restEnabled) => {
-                  changeRest({ restEnabled });
-                  if (!restEnabled) onStopRest();
-                }}
-                onSecondsChange={(restSeconds) => changeRest({ restSeconds })}
-              />
-            </div>
-            <div className="mt-5">
-              <OptionalSection
-                title="Sensaciones del ejercicio"
-                summary={`${exercise.mode === 'time' ? '' : `RIR ${rir} · `}${pain ? `molestias ${pain}/10` : 'sin molestias'}`}
+            <details
+              key={compact ? 'compact' : 'guided'}
+              open={compact ? undefined : true}
+              className="mt-4"
+            >
+              <summary
+                hidden={!compact}
+                className="min-h-11 cursor-pointer py-3 text-sm font-medium"
               >
-                <div className="grid gap-5 sm:grid-cols-2">
-                  {exercise.mode !== 'time' ? <RirSelector
-                    disabled={!editable}
-                    onChange={setRir}
-                    value={rir}
-                  /> : null}
-                  <PainSlider
-                    disabled={!editable}
-                    value={pain}
-                    onChange={setPain}
-                  />
-                </div>
-              </OptionalSection>
-            </div>
-            <div className="mt-5 border-t border-border pt-4 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 font-medium">
-                  <StatusDot pain={pain} /> Próxima sesión
-                </span>
-                <strong className="capitalize">
-                  {suggestion === 'subir' && exercise.unit !== 'reps'
-                    ? `Probar ${load + exercise.increment} ${exercise.unit ?? 'kg'}`
-                    : suggestion === 'bajar'
-                      ? 'Reducir carga'
-                      : 'Mantener'}
-                </strong>
+                Opciones y sensaciones
+              </summary>
+              <div>
+                <RestSettings
+                  enabled={rest.enabled}
+                  seconds={rest.seconds}
+                  disabled={!editable}
+                  onEnabledChange={(restEnabled) => {
+                    changeRest({ restEnabled });
+                    if (!restEnabled) onStopRest();
+                  }}
+                  onSecondsChange={(restSeconds) => changeRest({ restSeconds })}
+                />
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                {recommendation.reason}
-              </p>
-            </div>
-
+              <div className="mt-5">
+                <OptionalSection
+                  title="Sensaciones del ejercicio"
+                  summary={`${exercise.mode === 'time' ? '' : `RIR ${rir} · `}${pain ? `molestias ${pain}/10` : 'sin molestias'}`}
+                >
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    {exercise.mode !== 'time' ? (
+                      <RirSelector
+                        disabled={!editable}
+                        onChange={setRir}
+                        value={rir}
+                      />
+                    ) : null}
+                    <PainSlider
+                      disabled={!editable}
+                      value={pain}
+                      onChange={setPain}
+                    />
+                  </div>
+                </OptionalSection>
+              </div>
+              <div className="mt-5 border-t border-border pt-4 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 font-medium">
+                    <StatusDot pain={pain} /> Próxima sesión
+                  </span>
+                  <strong className="capitalize">
+                    {suggestion === 'subir' && exercise.unit !== 'reps'
+                      ? `Probar ${load + exercise.increment} ${exercise.unit ?? 'kg'}`
+                      : suggestion === 'bajar'
+                        ? 'Reducir carga'
+                        : 'Mantener'}
+                  </strong>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {recommendation.reason}
+                </p>
+              </div>
             </details>
             <AnimatedDisclosure id="exercise-notes" open={showNotes}>
               <textarea
@@ -937,27 +1022,7 @@ export function TodayView({
         </output>
       ) : null}
 
-      <button
-        aria-expanded={showCardio}
-        aria-controls="cardio-form"
-        className="quick-card"
-        onClick={() => setShowCardio((value) => !value)}
-        type="button"
-      >
-        <span className="icon-tile">
-          <Wind />
-        </span>
-        <span className="flex-1 text-left">
-          <strong className="block">Registrar actividad</strong>
-          <small className="text-muted-foreground">
-            Cardio, caminata o clase
-          </small>
-        </span>
-        <Plus className={`transition ${showCardio ? 'rotate-45' : ''}`} />
-      </button>
-      <AnimatedDisclosure id="cardio-form" open={showCardio}>
-        <CardioForm updateState={updateState} />
-      </AnimatedDisclosure>
+      <TodayActivities state={state} updateState={updateState} />
     </div>
   );
 }

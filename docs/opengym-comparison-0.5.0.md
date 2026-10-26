@@ -84,7 +84,46 @@ Además de las pruebas de lógica existentes, faltan recorridos automatizados de
 4. Rotación flexible, volumen semanal y progresión configurable.
 5. Fotos, IA, sensores y aplicación nativa solo si el uso real los justifica.
 
-No se han implementado ni publicado estas propuestas como parte de esta revisión.
+En la revisión inicial no se implementaron ni publicaron estas propuestas. El trabajo posterior autorizado se detalla a continuación; el inventario anterior describe el punto de partida 0.5.0.
+
+## Implementación local posterior a la revisión
+
+Trabajo autorizado el 26 de octubre. Se crearon commits separados hasta `80668e5`. Después el usuario pidió continuar sin commit ni push: las correcciones y comprobaciones posteriores quedan en el árbol de trabajo. No se ha publicado esta entrega.
+
+### Incorporado
+
+- Catálogo continuo con rueda de letras. Se retiró la alternativa por páginas a petición del usuario; queda pendiente validar la accesibilidad de esta vista única con lectores de pantalla.
+- Formulario de medidas separado, con errores asociados al campo, foco en el primer error y valores vacíos opcionales. El toast pausa su caducidad al recibir foco o pasar el puntero por encima. Enlace de salto al contenido posterior a la cabecera.
+- Registros eliminados recuperables en Firebase, con búsqueda, mes y páginas. Restaurar no sustituye un registro que ya exista. La eliminación definitiva requiere confirmación en la interfaz. Las copias descargadas siguen siendo responsabilidad de quien las conserva.
+- Historial de un ejercicio desde Progreso y desde el entrenamiento: carga, repeticiones, volumen, intervalos y detalle textual de las series. Los registros nuevos tienen identidad estable y criterio de carga. Modalidades y criterios distintos se pueden consultar por separado.
+- Vista Solo series guardada en la cuenta. El registro de actividad se ha separado de Hoy en un componente propio y los fuentes nuevos se han formateado para que sean legibles.
+- Series por segundos; carga total, por mancuerna, lastre, ayuda o sin carga. El historial conserva el criterio original aunque cambie la rutina. No se propone aumentar el contrapeso de ayuda como si fuese carga levantada.
+- Hevy conserva RPE, tiempo, distancia, tipo y referencias de superserie en campos propios. Los ejercicios se pueden vincular al catálogo explícitamente, sin fuzzy matching automático de identidad. RIR y molestias sin registrar permanecen desconocidos; no alimentan estadísticas como si fueran datos aportados.
+- Ejercicios propios con ID, notas, modalidad y foto opcional. Las fotos se reducen y se vuelven a generar antes del guardado, con límites de tamaño. Se pueden reutilizar desde las rutinas que los contienen. No se ha creado un repositorio global independiente de ejercicios propios.
+- Archivo de rutinas seleccionadas y vista imprimible/PDF. No se incluyen entrenamientos ni medidas. Las fotos y las notas de los propios ejercicios sí forman parte de la rutina compartida. La importación añade rutinas con IDs nuevos; añadir tramos al final es opcional.
+- Rotación de rutinas independiente del plan semanal. Solo avanza con trabajo realizado, conserva los tramos y permite volver al plan por semanas.
+- Series semanales por zona principal y ejercicio, con navegación entre semanas. No se presentan como recuperación medida. 1RM estimado opcional con fórmula visible, restringido a series realizadas de 1–10 repeticiones cuyo criterio de carga total esté declarado.
+- Progresión manual o propuesta al completar el rango. Ninguna política cambia la carga silenciosamente. Registro de entrenamientos pasados con revisión, reutilizando el editor existente; no completa la semana actual.
+- Buscador compartido en catálogo, Progreso y vinculación de importaciones. Las listas de Progreso y vinculación comparten carga progresiva, miniaturas y alternativa de teclado, sin truncar la búsqueda a los primeros 30 resultados. Se eliminaron los contadores de elementos visibles.
+- Selección provisional de ejercicios: tocar marca o desmarca; confirmar añade el grupo a la rutina. Cerrar sin confirmar descarta la selección. Los ejercicios ya confirmados se quitan desde el editor, conservando sus ajustes. Se corrigió la cadena de altura flexible que bloqueaba el scroll del editor de sesiones.
+- Duplicar una serie desde su menú conserva carga, repeticiones o segundos y deja la nueva serie pendiente; no copia esfuerzo ni referencias de importación. Calculadora de discos en el menú de las series con barra durante el entrenamiento, con peso de barra y número de pares ajustables. Busca un montaje simétrico sin superar el peso elegido; los ajustes son de esa apertura y no cambian las cargas del entrenamiento.
+- Perfil sustituye a Movilidad en la navegación inferior. Movilidad conserva sus rutinas e indicaciones dentro de Hoy, bajo Registrar actividad, también sin sesión de fuerza asignada. El estado de sincronización de la cabecera se muestra con nube y check, loader o enchufe desconectado, con descripción accesible.
+- Estado optimista compartido con React mediante `useSyncExternalStore`, sin una segunda copia del estado en el hook de cuenta. Respuestas remotas serializadas y ordenadas por revisión; la limpieza de cambios confirmados no borra una edición posterior. Tras la primera lectura autorizada, los fallos transitorios de red permiten seguir editando con una cola local pendiente, sin reintentos en bucle. Los errores de permisos y los conflictos siguen bloqueando la edición. La caché inicial nunca se sube como fuente de verdad.
+
+### Verificación y límites
+
+- TypeScript y lint de la aplicación correctos. 141 pruebas de lógica correctas para identidad, modalidades, cálculo, importación, recuperación, rotación, exportación, búsqueda, discos, selección de ejercicios y estado optimista ante respuestas retrasadas.
+- Cuatro pruebas del adaptador real y reglas contra el emulador oficial de Firestore. Incluyen dos clientes que guardan y restauran series por tiempo, ajustes de vista y rotación. No escriben datos de prueba en la cuenta real.
+- Builds de aplicación, exportación estática con `/workout-tracker/` y Storybook. Persisten avisos de plugins y tamaño del catálogo; no se han ocultado ni presentado como resueltos.
+- Chrome personal, en demostraciones en memoria: validación de medida vacía; peso `72,6` después de tocar cintura sin rellenarla; historial por ejercicio; editar segundos y marcar serie; crear ejercicio por tiempo; activar catálogo por páginas; configurar rotación; diálogo de compartir a 390 px. Se detectó y corrigió un desbordamiento del selector de archivo: el ancho interno del diálogo pasó a coincidir con sus 358 px disponibles.
+- La descarga de rutinas sí produjo un archivo local: se leyó con el parser y contenía una rutina y solo las claves del formato de plan, sin `exerciseLogs`. La espera de eventos de descarga del control del navegador falló; no se usa ese intento como prueba de importación por el selector de archivos.
+- El control local del navegador quedó desactivado en Work antes de terminar el recorrido. Quedan sin comprobar en navegador la restauración, la importación del archivo exportado, el diálogo de impresión y los últimos ajustes de foco/papelera. No se han probado VoiceOver, TalkBack, un móvil físico ni la ampliación al 200 %. Tampoco se ha completado una nueva pasada visual de todos los estados en ambos temas.
+
+### Pendiente del inventario
+
+La primera carga remota sigue leyendo todo el historial. La navegación por páginas en la interfaz no equivale a consultas remotas por fecha. Cambiarlo exige adaptar las estadísticas, el calendario y los contratos del repositorio para no confundir registros aún no descargados con registros borrados; no se ha cambiado la autoridad de Firebase para esquivar ese problema.
+
+También quedan para entregas posteriores el inventario persistente de material, mapa muscular, registro por lado, técnicas avanzadas de series, plantillas opcionales de programas, objetivos de medidas, otros importadores y API de Hevy. Las funciones nativas, fotos de progreso e IA continúan fuera de esta entrega. La vista Hoy y el editor de Plan aún necesitan extraer más lógica por responsabilidad; dividir y formatear archivos no completa por sí solo la revisión de arquitectura.
 
 ## Fuentes primarias
 

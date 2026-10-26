@@ -19,6 +19,7 @@ import { firebaseRecordDatabase } from '../lib/firebase.ts';
 import { CloudRepository } from '../lib/cloud-repository.ts';
 import { CloudConflict } from '../lib/cloud-records.ts';
 import { defaultState } from '../lib/storage.ts';
+import { moveToTrash, restoreDeleted } from '../lib/record-trash.ts';
 
 let environment;
 before(async () => {
@@ -141,4 +142,82 @@ test('the production Firestore adapter migrates, paginates, updates deltas and d
       .planName,
     'Original',
   );
+});
+
+test('timed sets, rotation and deleted records survive two real Firestore clients', async () => {
+  const pc = repository('alice');
+  const mobile = repository('alice');
+  const base = await pc.load();
+  const exercise = {
+    id: 'custom:plank',
+    name: 'Plancha',
+    mode: 'time',
+    loadKind: 'none',
+    unit: 'reps',
+    targetSeconds: 30,
+    target: '2×30 s',
+    sets: 2,
+    minReps: 8,
+    maxReps: 12,
+    increment: 0.5,
+  };
+  const log = {
+    id: 'log',
+    exercise: 'Plancha',
+    exerciseId: exercise.id,
+    mode: 'time',
+    loadKind: 'none',
+    unit: 'reps',
+    workoutId: 'workout',
+    routine: 'r',
+    week: 1,
+    date: '2026-10-26T12:00:00Z',
+    load: 0,
+    rir: 0,
+    pain: 0,
+    note: '',
+    suggestion: 'mantener',
+    sets: [{ reps: 0, seconds: 45, done: true }],
+  };
+  const workout = {
+    id: 'workout',
+    date: log.date,
+    routine: 'r',
+    routineName: 'Rutina',
+    week: 1,
+    notes: '',
+    exercises: [{ name: log.exercise, status: 'done', logId: log.id }],
+  };
+  await pc.save(
+    {
+      ...base,
+      workoutView: 'compact',
+      sessions: [{ id: 'r', name: 'Rutina', exercises: [exercise] }],
+      exerciseLogs: [log],
+      workoutLogs: [workout],
+      rotation: { id: 'cycle', startedAt: log.date, routines: ['r'] },
+    },
+    base.updatedAt,
+    base,
+  );
+  const loaded = await mobile.load();
+  assert.equal(loaded.exerciseLogs[0].sets[0].seconds, 45);
+  assert.equal(loaded.workoutView, 'compact');
+  assert.deepEqual(loaded.rotation.routines, ['r']);
+  const deleted = await mobile.save(
+    moveToTrash(loaded, 'workoutLogs', 'workout'),
+    loaded.updatedAt,
+    loaded,
+  );
+  assert.equal(deleted.exerciseLogs.length, 0);
+  const seen = await pc.load();
+  assert.equal(seen.trash.length, 1);
+  const restored = await pc.save(
+    restoreDeleted(seen, seen.trash[0].id),
+    seen.updatedAt,
+    seen,
+  );
+  assert.equal(restored.workoutLogs.length, 1);
+  assert.equal(restored.exerciseLogs[0].sets[0].seconds, 45);
+  assert.equal(restored.trash.length, 0);
 });

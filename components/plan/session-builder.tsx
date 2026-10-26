@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Plus,
   Save,
-  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -20,6 +19,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { moveItem } from '@/lib/list-order';
+import {
+  appendCatalogExercises,
+  toggleCatalogSelection,
+} from '@/lib/session-exercises';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +44,8 @@ import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-e
 import { type RestPreferences } from '@/lib/rest-preferences';
 import { uid } from '@/lib/local-date';
 import { CustomExerciseDialog } from '@/components/plan/custom-exercise';
+import { ExerciseThumbnail } from '@/components/exercises/exercise-thumbnail';
+import { ExerciseSearchField } from '@/components/exercises/exercise-search-field';
 import {
   ExerciseImage,
   ExercisePreview,
@@ -62,6 +67,7 @@ export function SessionBuilder({
   const [name, setName] = useState(initialSession?.name ?? '');
   const [query, setQuery] = useState('');
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [pending, setPending] = useState<CatalogExercise[]>([]);
   const [custom, setCustom] = useState<Exercise | 'new' | null>(null);
   const [saveError, setSaveError] = useState('');
   const [filters, setFilters] = useState<CatalogFilterValue>({});
@@ -82,26 +88,6 @@ export function SessionBuilder({
     [picked],
   );
 
-  const add = (item: CatalogExercise) =>
-    setPicked((current) =>
-      current.some((exercise) => exercise.name === item.name)
-        ? current
-        : [
-            ...current,
-            {
-              name: item.name,
-              catalogId: item.id,
-              target: `3×8–12 · RIR 2–3`,
-              sets: 3,
-              minReps: 8,
-              maxReps: 12,
-              minRir: 2,
-              maxRir: 3,
-              increment: 2.5,
-              unit: 'kg',
-            },
-          ],
-    );
   const remove = (exerciseName: string) =>
     setPicked((current) =>
       current.filter((exercise) => exercise.name !== exerciseName),
@@ -109,7 +95,12 @@ export function SessionBuilder({
   const save = () => {
     const trimmed = name.trim();
     if (!trimmed || picked.length === 0) return;
-    if (new TextEncoder().encode(JSON.stringify(picked)).length > 700000) { setSaveError('Esta rutina contiene demasiadas fotos. Quita alguna foto o divide la rutina antes de guardar.'); return; }
+    if (new TextEncoder().encode(JSON.stringify(picked)).length > 700000) {
+      setSaveError(
+        'Esta rutina contiene demasiadas fotos. Quita alguna foto o divide la rutina antes de guardar.',
+      );
+      return;
+    }
     onSave({
       id: initialSession?.id ?? uid(),
       name: trimmed,
@@ -161,7 +152,8 @@ export function SessionBuilder({
                   <span className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                     <ExerciseImage
                       image={
-                        exercise.image || getExerciseDetails(exercise.name, exercise.catalogId)
+                        exercise.image ||
+                        getExerciseDetails(exercise.name, exercise.catalogId)
                           ?.image
                       }
                       name={getExerciseDisplayName(
@@ -187,7 +179,14 @@ export function SessionBuilder({
                       <MoreHorizontal />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-44">
-                      {exercise.id?.startsWith('custom:') ? <DropdownMenuItem className="min-h-11" onClick={() => setCustom(exercise)}>Editar nombre y foto</DropdownMenuItem> : null}
+                      {exercise.id?.startsWith('custom:') ? (
+                        <DropdownMenuItem
+                          className="min-h-11"
+                          onClick={() => setCustom(exercise)}
+                        >
+                          Editar nombre y foto
+                        </DropdownMenuItem>
+                      ) : null}
                       <DropdownMenuItem
                         className="min-h-11"
                         disabled={index === 0}
@@ -242,15 +241,71 @@ export function SessionBuilder({
         <Button
           className="mb-4 min-h-12 w-full rounded-xl"
           variant="outline"
-          onClick={() => setCatalogOpen(true)}
+          onClick={() => {
+            setPending([]);
+            setCatalogOpen(true);
+          }}
         >
           <Plus className="size-4" /> Añadir ejercicios
         </Button>
-        <Button variant="ghost" className="mb-4 min-h-11 w-full" onClick={() => setCustom('new')}>Crear ejercicio propio</Button>
-        {customExercises.length ? <details className="mb-4"><summary className="min-h-11 cursor-pointer py-3 text-sm">Tus ejercicios propios</summary>{customExercises.filter(item => !picked.some(selected => selected.id === item.id || selected.name === item.name)).map(item => <Button key={item.id} variant="ghost" className="min-h-11 w-full justify-start" onClick={() => setPicked(current => [...current, { ...item }])}><Plus />{item.name}</Button>)}</details> : null}
-        {saveError ? <p role="alert" className="text-sm text-destructive">{saveError}</p> : null}
+        <Button
+          variant="ghost"
+          className="mb-4 min-h-11 w-full"
+          onClick={() => setCustom('new')}
+        >
+          Crear ejercicio propio
+        </Button>
+        {customExercises.length ? (
+          <details className="mb-4">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm">
+              Tus ejercicios propios
+            </summary>
+            {customExercises
+              .filter(
+                (item) =>
+                  !picked.some(
+                    (selected) =>
+                      selected.id === item.id || selected.name === item.name,
+                  ),
+              )
+              .map((item) => (
+                <Button
+                  key={item.id}
+                  variant="ghost"
+                  className="min-h-18 w-full justify-start gap-3 whitespace-normal py-2 text-left"
+                  onClick={() =>
+                    setPicked((current) => [...current, { ...item }])
+                  }
+                >
+                  <ExerciseThumbnail name={item.name} image={item.image} />
+                  {item.name}
+                </Button>
+              ))}
+          </details>
+        ) : null}
+        {saveError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {saveError}
+          </p>
+        ) : null}
       </div>
-      {custom ? <CustomExerciseDialog existing={custom === 'new' ? undefined : custom} names={picked.map(item => item.name)} onClose={() => setCustom(null)} onSave={exercise => { setPicked(current => custom === 'new' ? [...current, exercise] : current.map(item => item.id === exercise.id ? exercise : item)); setCustom(null); }} /> : null}
+      {custom ? (
+        <CustomExerciseDialog
+          existing={custom === 'new' ? undefined : custom}
+          names={picked.map((item) => item.name)}
+          onClose={() => setCustom(null)}
+          onSave={(exercise) => {
+            setPicked((current) =>
+              custom === 'new'
+                ? [...current, exercise]
+                : current.map((item) =>
+                    item.id === exercise.id ? exercise : item,
+                  ),
+            );
+            setCustom(null);
+          }}
+        />
+      ) : null}
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
         <DialogContent className="catalog-sheet">
           <div className="shrink-0 pr-8">
@@ -260,16 +315,7 @@ export function SessionBuilder({
             </DialogDescription>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3">
-              <Search className="size-4 shrink-0 text-muted-foreground" />
-              <input
-                aria-label="Buscar ejercicios"
-                className="h-11 min-w-0 flex-1 bg-transparent text-base outline-none"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Buscar ejercicio…"
-                value={query}
-              />
-            </div>
+            <ExerciseSearchField value={query} onChange={setQuery} />
             <CatalogFilters value={filters} onChange={setFilters} />
           </div>
           <p
@@ -291,7 +337,13 @@ export function SessionBuilder({
             key={`${searchQuery}:${filters.bodyPart ?? ''}:${filters.equipment ?? ''}`}
             sections={sections}
             renderExercise={(item) => {
-              const added = pickedNames.has(item.name);
+              const assigned =
+                pickedNames.has(item.name) ||
+                picked.some((exercise) => exercise.catalogId === item.id);
+              const selected = pending.some(
+                (exercise) => exercise.id === item.id,
+              );
+              const added = assigned || selected;
               const translated = getExerciseDisplayName(item.name, item.id);
               return (
                 <div
@@ -305,22 +357,31 @@ export function SessionBuilder({
                     compact
                   />
                   <button
-                    aria-label={`${added ? 'Añadido' : 'Añadir'}: ${translated}`}
-                    aria-disabled={added}
+                    aria-label={`${assigned ? 'Ya en la rutina' : selected ? 'Deseleccionar' : 'Seleccionar'}: ${translated}`}
+                    aria-pressed={added}
+                    disabled={assigned}
                     className="flex min-h-14 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-primary"
-                    onClick={() => add(item)}
+                    onClick={() =>
+                      setPending((current) =>
+                        toggleCatalogSelection(current, item),
+                      )
+                    }
                     type="button"
                   >
                     <span className="min-w-0 flex-1">
                       <strong className="block text-sm">{translated}</strong>
-                      {translated !== item.name ? (
+                      {assigned ? (
+                        <small className="block text-xs text-muted-foreground">
+                          En la rutina
+                        </small>
+                      ) : translated !== item.name ? (
                         <small className="block truncate text-xs text-muted-foreground">
                           {item.name}
                         </small>
                       ) : null}
                     </span>
                     {added ? (
-                      <Check className="size-5 shrink-0 text-emerald-600" />
+                      <Check className="size-5 shrink-0 text-primary" />
                     ) : (
                       <Plus className="size-5 shrink-0 text-muted-foreground" />
                     )}
@@ -331,10 +392,15 @@ export function SessionBuilder({
           />
           <Button
             className="min-h-12 shrink-0 rounded-xl"
-            onClick={() => setCatalogOpen(false)}
+            onClick={() => {
+              setPicked((current) => appendCatalogExercises(current, pending));
+              setPending([]);
+              setCatalogOpen(false);
+            }}
           >
-            Listo · {picked.length}{' '}
-            {picked.length === 1 ? 'ejercicio' : 'ejercicios'}
+            {pending.length
+              ? `Listo · Añadir ${pending.length} ${pending.length === 1 ? 'ejercicio' : 'ejercicios'}`
+              : 'Listo'}
           </Button>
         </DialogContent>
       </Dialog>

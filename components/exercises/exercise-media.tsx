@@ -118,9 +118,11 @@ export function ExercisePreview({
                   src={exerciseImageUrl(image)}
                   alt={name}
                 />
-                {!image.startsWith('data:image/') ? <output className="block px-4 py-2 text-center text-xs text-zinc-600">
-                  Animación no disponible. Se muestra la imagen.
-                </output> : null}
+                {!image.startsWith('data:image/') ? (
+                  <output className="block px-4 py-2 text-center text-xs text-zinc-600">
+                    Animación no disponible. Se muestra la imagen.
+                  </output>
+                ) : null}
               </div>
             ) : (
               <video

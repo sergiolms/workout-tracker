@@ -1,14 +1,6 @@
 'use client';
-import {
-  BarChart3,
-  CalendarDays,
-  CircleUserRound,
-  Dumbbell,
-  Footprints,
-  HeartPulse,
-  Home,
-  Timer,
-} from 'lucide-react';
+import { HeartPulse } from 'lucide-react';
+import { navItems, type Tab } from '@/components/navigation-items';
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DialogThemeProvider } from '@/components/ui/dialog';
@@ -49,37 +41,11 @@ const ProgressView = lazy(() =>
     default: module.ProgressView,
   })),
 );
-const MobilityView = lazy(() =>
-  import('@/components/views/mobility-view').then((module) => ({
-    default: module.MobilityView,
-  })),
-);
 const ProfileView = lazy(() =>
   import('@/components/views/profile-view').then((module) => ({
     default: module.ProfileView,
   })),
 );
-
-export type Tab =
-  | 'today'
-  | 'plan'
-  | 'timers'
-  | 'progress'
-  | 'mobility'
-  | 'profile';
-
-export const navItems: Array<{
-  id: Tab;
-  label: string;
-  icon: typeof Home;
-  featured?: boolean;
-}> = [
-  { id: 'plan', label: 'Plan', icon: CalendarDays },
-  { id: 'progress', label: 'Progreso', icon: BarChart3 },
-  { id: 'today', label: 'Hoy', icon: Dumbbell, featured: true },
-  { id: 'timers', label: 'Timer', icon: Timer },
-  { id: 'mobility', label: 'Movilidad', icon: Footprints },
-];
 
 export default function HomePage() {
   const {
@@ -162,15 +128,19 @@ export default function HomePage() {
       ...state.workoutLogs.filter((item) => item.id !== workout.id),
       workout,
     ];
-    const rotationNext = state.rotation ? nextRotationRoutine(state, updatedWorkouts) : null;
-    const next = rotationNext ? { week: state.week, routine: rotationNext } : countsTowardPlan(workout)
-      ? nextPlanSession(
-          state.plan,
-          updatedWorkouts,
-          workout.week,
-          workout.routine,
-        )
+    const rotationNext = state.rotation
+      ? nextRotationRoutine(state, updatedWorkouts)
       : null;
+    const next = rotationNext
+      ? { week: state.week, routine: rotationNext }
+      : countsTowardPlan(workout)
+        ? nextPlanSession(
+            state.plan,
+            updatedWorkouts,
+            workout.week,
+            workout.routine,
+          )
+        : null;
     updateState((current) => ({
       ...current,
       week: next?.week ?? current.week,
@@ -237,8 +207,6 @@ export default function HomePage() {
         state={state}
         updateState={updateState}
       />
-    ) : tab === 'mobility' ? (
-      <MobilityView state={state} updateState={updateState} />
     ) : (
       <ProfileView
         editable={persistenceStatus.canEdit}
@@ -316,8 +284,19 @@ export default function HomePage() {
           className="app-shell bg-background text-foreground"
           data-rest-active={restDeadline !== null}
         >
-          <a href="#app-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3">Saltar al contenido</a>
-          <main id="app-content" tabIndex={-1} ref={contentScroll} className="app-content" {...swipeHandlers}>
+          <a
+            href="#view-content"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3"
+          >
+            Saltar al contenido
+          </a>
+          <main
+            id="app-content"
+            tabIndex={-1}
+            ref={contentScroll}
+            className="app-content"
+            {...swipeHandlers}
+          >
             <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
               <header className="app-header">
                 <button
@@ -333,107 +312,102 @@ export default function HomePage() {
                 </button>
                 <div className="flex items-center gap-2">
                   <SaveStatus status={persistenceStatus} />
-                  <Button
-                    aria-label="Abrir perfil"
-                    className="size-11 rounded-xl border-border bg-card text-foreground shadow-sm hover:bg-muted"
-                    onClick={() => setTab('profile')}
-                    size="icon"
-                    variant="outline"
-                  >
-                    <CircleUserRound />
-                  </Button>
                 </div>
               </header>
-              <MotionSurface
-                className="mx-auto max-w-[760px]"
-                motionKey={tab}
-                direction={viewDirection}
-              >
-                {updateAvailable ? (
-                  <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
-                    <span className="text-sm font-medium">
-                      Nueva versión disponible
-                    </span>
-                    <Button
-                      className="min-h-10 shrink-0 rounded-lg"
-                      onClick={() => window.location.reload()}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Actualizar
-                    </Button>
-                  </output>
-                ) : null}
-                {tab === 'timers' ? (
-                  <div className="section-heading">
-                    <div>
-                      <h1 className="page-title">Timer</h1>
-                      <p className="page-subtitle">
-                        Tu ritmo, sin distracciones
-                      </p>
+              <div id="view-content" tabIndex={-1}>
+                <MotionSurface
+                  className="mx-auto max-w-[760px]"
+                  motionKey={tab}
+                  direction={viewDirection}
+                >
+                  {updateAvailable ? (
+                    <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+                      <span className="text-sm font-medium">
+                        Nueva versión disponible
+                      </span>
+                      <Button
+                        className="min-h-10 shrink-0 rounded-lg"
+                        onClick={() => window.location.reload()}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Actualizar
+                      </Button>
+                    </output>
+                  ) : null}
+                  {tab === 'timers' ? (
+                    <div className="section-heading">
+                      <div>
+                        <h1 className="page-title">Timer</h1>
+                        <p className="page-subtitle">
+                          Tu ritmo, sin distracciones
+                        </p>
+                      </div>
                     </div>
+                  ) : null}
+                  <div className={tab === 'timers' ? '' : 'hidden'}>
+                    <WorkoutTimer />
                   </div>
-                ) : null}
-                <div className={tab === 'timers' ? '' : 'hidden'}>
-                  <WorkoutTimer />
-                </div>
-                {persistenceStatus.conflicts?.length ? (
-                  <SyncConflicts
-                    key={JSON.stringify(persistenceStatus.conflicts)}
-                    state={state}
-                    conflicts={persistenceStatus.conflicts}
-                    onResolve={resolveConflicts}
-                  />
-                ) : persistenceStatus.error ? (
-                  <p
-                    role="alert"
-                    className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                  >
-                    {persistenceStatus.local === 'error'
-                      ? 'No se ha podido guardar en este dispositivo.'
-                      : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'}{' '}
-                    <span className="block text-xs">
-                      {persistenceStatus.error}
-                    </span>
-                  </p>
-                ) : null}
-                {!persistenceStatus.canEdit && !persistenceStatus.error ? (
-                  <output className="mb-4 block text-sm text-muted-foreground">
-                    Conectando con Firebase. La copia local se muestra en modo
-                    lectura.
-                  </output>
-                ) : null}
-                <ViewBoundary key={tab}>
-                  <Suspense
-                    fallback={
-                      <output className="block py-6 text-sm text-muted-foreground">
-                        Cargando vista…
-                      </output>
-                    }
-                  >
-                    <fieldset
-                      disabled={!persistenceStatus.canEdit && tab !== 'profile'}
-                      className="min-w-0"
+                  {persistenceStatus.conflicts?.length ? (
+                    <SyncConflicts
+                      key={JSON.stringify(persistenceStatus.conflicts)}
+                      state={state}
+                      conflicts={persistenceStatus.conflicts}
+                      onResolve={resolveConflicts}
+                    />
+                  ) : persistenceStatus.error ? (
+                    <p
+                      role="alert"
+                      className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
                     >
-                      {tab === 'timers' ? null : tab === 'profile' ? (
-                        <ProfileView
-                          editable={persistenceStatus.canEdit}
-                          authBusy={authBusy}
-                          authError={authError}
-                          cloudReady={cloudReady}
-                          onGoogleLogin={handleGoogleLogin}
-                          onLogout={handleLogout}
-                          state={state}
-                          updateState={updateState}
-                          user={firebaseUser}
-                        />
-                      ) : (
-                        content
-                      )}
-                    </fieldset>
-                  </Suspense>
-                </ViewBoundary>
-              </MotionSurface>
+                      {persistenceStatus.local === 'error'
+                        ? 'No se ha podido guardar en este dispositivo.'
+                        : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'}{' '}
+                      <span className="block text-xs">
+                        {persistenceStatus.error}
+                      </span>
+                    </p>
+                  ) : null}
+                  {!persistenceStatus.canEdit && !persistenceStatus.error ? (
+                    <output className="mb-4 block text-sm text-muted-foreground">
+                      Conectando con Firebase. La copia local se muestra en modo
+                      lectura.
+                    </output>
+                  ) : null}
+                  <ViewBoundary key={tab}>
+                    <Suspense
+                      fallback={
+                        <output className="block py-6 text-sm text-muted-foreground">
+                          Cargando vista…
+                        </output>
+                      }
+                    >
+                      <fieldset
+                        disabled={
+                          !persistenceStatus.canEdit && tab !== 'profile'
+                        }
+                        className="min-w-0"
+                      >
+                        {tab === 'timers' ? null : tab === 'profile' ? (
+                          <ProfileView
+                            editable={persistenceStatus.canEdit}
+                            authBusy={authBusy}
+                            authError={authError}
+                            cloudReady={cloudReady}
+                            onGoogleLogin={handleGoogleLogin}
+                            onLogout={handleLogout}
+                            state={state}
+                            updateState={updateState}
+                            user={firebaseUser}
+                          />
+                        ) : (
+                          content
+                        )}
+                      </fieldset>
+                    </Suspense>
+                  </ViewBoundary>
+                </MotionSurface>
+              </div>
             </div>
           </main>
           {undo ? (

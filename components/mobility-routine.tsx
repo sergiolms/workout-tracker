@@ -16,7 +16,7 @@ import { type AppState } from '@/lib/storage';
 import { ViewTabs } from '@/components/view-tabs';
 import { localDateKey } from '@/lib/local-date';
 
-export function MobilityView({
+export function MobilityRoutine({
   state,
   updateState,
 }: {
@@ -44,12 +44,6 @@ export function MobilityView({
     }));
   return (
     <div>
-      <div className="section-heading">
-        <div>
-          <h1 className="page-title">Movilidad</h1>
-          <p className="page-subtitle">Unos minutos para moverte mejor</p>
-        </div>
-      </div>
       <ViewTabs
         label="Rutina de movilidad"
         value={mode}

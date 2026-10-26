@@ -41,7 +41,9 @@ export function BackupImporter({
     <div className="mt-3">
       <input
         ref={input}
-        aria-label={format === 'hevy' ? 'Archivo CSV de Hevy' : 'Archivo de copia de Base'}
+        aria-label={
+          format === 'hevy' ? 'Archivo CSV de Hevy' : 'Archivo de copia de Base'
+        }
         type="file"
         accept={format === 'hevy' ? '.csv,text/csv' : 'application/json,.json'}
         className="sr-only"
@@ -80,9 +82,20 @@ export function BackupImporter({
         disabled={!editable || loading}
         onClick={() => input.current?.click()}
       >
-        <Upload /> {loading ? 'Leyendo archivo…' : format === 'hevy' ? 'Importar CSV de Hevy' : 'Importar copia de Base'}
+        <Upload />{' '}
+        {loading
+          ? 'Leyendo archivo…'
+          : format === 'hevy'
+            ? 'Importar CSV de Hevy'
+            : 'Importar copia de Base'}
       </Button>
-      {format === 'hevy' ? <p className="mt-2 text-xs text-muted-foreground">En Hevy: Perfil → Ajustes → Exportar e importar datos. Elige entrenamientos o medidas. Las fechas sin zona horaria se interpretan en la zona de este dispositivo. Tu plan se conserva.</p> : null}
+      {format === 'hevy' ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          En Hevy: Perfil → Ajustes → Exportar e importar datos. Elige
+          entrenamientos o medidas. Las fechas sin zona horaria se interpretan
+          en la zona de este dispositivo. Tu plan se conserva.
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
           {error}
@@ -130,7 +143,11 @@ export function BackupImportDialog({
   const [includePlan, setIncludePlan] = useState(false);
   const [replaceConflicts, setReplaceConflicts] = useState(false);
   const preview = backupPreview(state, incoming);
-  const hasChanges = includePlan || preview.some(row => row.additions > 0 || (replaceConflicts && row.conflicts > 0));
+  const hasChanges =
+    includePlan ||
+    preview.some(
+      (row) => row.additions > 0 || (replaceConflicts && row.conflicts > 0),
+    );
   return (
     <Dialog
       open
@@ -144,7 +161,13 @@ export function BackupImportDialog({
           Se añadirán los registros nuevos. Si uno ya existe, lo conservamos
           salvo que elijas sustituirlo. Las sesiones en curso no se importan.
         </DialogDescription>
-        {warnings.length ? <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul> : null}
+        {warnings.length ? (
+          <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">
+            {warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        ) : null}
         <dl className="divide-y divide-border">
           {preview.map((row) => (
             <div
@@ -197,14 +220,18 @@ export function BackupImportDialog({
             </span>
           </label>
         ) : null}
-          {!hasChanges ? <p className="text-sm text-muted-foreground">No hay registros nuevos para importar con esta selección.</p> : null}
-          <div className="flex justify-end gap-2">
+        {!hasChanges ? (
+          <p className="text-sm text-muted-foreground">
+            No hay registros nuevos para importar con esta selección.
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
           <Button className="min-h-12" variant="outline" onClick={onClose}>
             Cancelar
           </Button>
           <Button
             className="min-h-12"
-              disabled={!editable || !hasChanges}
+            disabled={!editable || !hasChanges}
             onClick={() => {
               onImport((current) =>
                 importBackup(current, incoming, {

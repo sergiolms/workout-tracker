@@ -4,29 +4,72 @@ import { sameExercise } from './exercise-identity.ts';
 import type { Exercise } from './workout-data.ts';
 
 // Compare only like-for-like sets; a higher load with fewer reps is mixed.
-export function performanceTrend(load: number, reps: number, previousLoad: number, previousReps: number): 'up' | 'down' | 'same' | 'mixed' {
+export function performanceTrend(
+  load: number,
+  reps: number,
+  previousLoad: number,
+  previousReps: number,
+): 'up' | 'down' | 'same' | 'mixed' {
   if (load === previousLoad && reps === previousReps) return 'same';
   if (load >= previousLoad && reps >= previousReps) return 'up';
   if (load <= previousLoad && reps <= previousReps) return 'down';
   return 'mixed';
 }
 
-export function previousExerciseLog(logs: ExerciseLog[], exercise: string | Exercise, workoutId: string): ExerciseLog | undefined {
-  return logs.filter(log => sameExercise(log, typeof exercise === 'string' ? { name: exercise } : exercise) && (typeof exercise === 'string' || ((log.mode ?? 'reps') === (exercise.mode ?? 'reps') && (log.loadKind ?? (log.unit === 'reps' ? 'none' : 'total')) === (exercise.loadKind ?? (exercise.unit === 'reps' ? 'none' : 'total')))) && log.workoutId !== workoutId && !log.skipped && workingSets(log.sets).some(set => set.done))
+export function previousExerciseLog(
+  logs: ExerciseLog[],
+  exercise: string | Exercise,
+  workoutId: string,
+): ExerciseLog | undefined {
+  return logs
+    .filter(
+      (log) =>
+        sameExercise(
+          log,
+          typeof exercise === 'string' ? { name: exercise } : exercise,
+        ) &&
+        (typeof exercise === 'string' ||
+          ((log.mode ?? 'reps') === (exercise.mode ?? 'reps') &&
+            (log.loadKind ?? (log.unit === 'reps' ? 'none' : 'total')) ===
+              (exercise.loadKind ??
+                (exercise.unit === 'reps' ? 'none' : 'total')))) &&
+        log.workoutId !== workoutId &&
+        !log.skipped &&
+        workingSets(log.sets).some((set) => set.done),
+    )
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
 }
 
 // Undo only this action, never a snapshot of the whole account or newer edits.
-export function undoSkippedExercise(state: AppState, skipped: ExerciseLog, previous: ExerciseLog | undefined, previousWorkouts: AppState['workoutLogs']): AppState {
-  const current = state.exerciseLogs.find(log => log.id === skipped.id);
+export function undoSkippedExercise(
+  state: AppState,
+  skipped: ExerciseLog,
+  previous: ExerciseLog | undefined,
+  previousWorkouts: AppState['workoutLogs'],
+): AppState {
+  const current = state.exerciseLogs.find((log) => log.id === skipped.id);
   if (JSON.stringify(current) !== JSON.stringify(skipped)) return state;
   return {
     ...state,
-    exerciseLogs: previous ? state.exerciseLogs.map(log => log.id === skipped.id ? previous : log) : state.exerciseLogs.filter(log => log.id !== skipped.id),
-    workoutLogs: state.workoutLogs.map(workout => workout.id === skipped.workoutId ? {
-      ...workout,
-      exercises: workout.exercises.map(item => item.logId === skipped.id ? previousWorkouts.find(old => old.id === workout.id)?.exercises.find(old => old.name === item.name) ?? item : item),
-    } : workout),
+    exerciseLogs: previous
+      ? state.exerciseLogs.map((log) =>
+          log.id === skipped.id ? previous : log,
+        )
+      : state.exerciseLogs.filter((log) => log.id !== skipped.id),
+    workoutLogs: state.workoutLogs.map((workout) =>
+      workout.id === skipped.workoutId
+        ? {
+            ...workout,
+            exercises: workout.exercises.map((item) =>
+              item.logId === skipped.id
+                ? (previousWorkouts
+                    .find((old) => old.id === workout.id)
+                    ?.exercises.find((old) => old.name === item.name) ?? item)
+                : item,
+            ),
+          }
+        : workout,
+    ),
   };
 }
 
