@@ -209,6 +209,7 @@ export function PlanView({
   if (building)
     return (
       <SessionBuilder
+        customExercises={[...new Map(state.sessions.flatMap(session => session.exercises).filter(exercise => exercise.id?.startsWith('custom:')).map(exercise => [exercise.id, exercise])).values()]}
         defaultRest={{
           restEnabled: state.restEnabled,
           restSeconds: state.restSeconds,

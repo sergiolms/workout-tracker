@@ -40,6 +40,7 @@ import type { CatalogFilters as CatalogFilterValue } from '@/lib/catalog-filters
 import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-editor';
 import { type RestPreferences } from '@/lib/rest-preferences';
 import { uid } from '@/lib/local-date';
+import { CustomExerciseDialog } from '@/components/plan/custom-exercise';
 import {
   ExerciseImage,
   ExercisePreview,
@@ -50,15 +51,19 @@ export function SessionBuilder({
   initialSession,
   onSave,
   onCancel,
+  customExercises = [],
 }: {
   defaultRest: RestPreferences;
   initialSession?: Session;
   onSave: (session: Session) => void;
   onCancel: () => void;
+  customExercises?: Exercise[];
 }) {
   const [name, setName] = useState(initialSession?.name ?? '');
   const [query, setQuery] = useState('');
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [custom, setCustom] = useState<Exercise | 'new' | null>(null);
+  const [saveError, setSaveError] = useState('');
   const [filters, setFilters] = useState<CatalogFilterValue>({});
   const [picked, setPicked] = useState<Exercise[]>(
     initialSession?.exercises.map((exercise) => ({ ...exercise })) ?? [],
@@ -104,6 +109,7 @@ export function SessionBuilder({
   const save = () => {
     const trimmed = name.trim();
     if (!trimmed || picked.length === 0) return;
+    if (new TextEncoder().encode(JSON.stringify(picked)).length > 700000) { setSaveError('Esta rutina contiene demasiadas fotos. Quita alguna foto o divide la rutina antes de guardar.'); return; }
     onSave({
       id: initialSession?.id ?? uid(),
       name: trimmed,
@@ -155,7 +161,7 @@ export function SessionBuilder({
                   <span className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                     <ExerciseImage
                       image={
-                        getExerciseDetails(exercise.name, exercise.catalogId)
+                        exercise.image || getExerciseDetails(exercise.name, exercise.catalogId)
                           ?.image
                       }
                       name={getExerciseDisplayName(
@@ -181,6 +187,7 @@ export function SessionBuilder({
                       <MoreHorizontal />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-44">
+                      {exercise.id?.startsWith('custom:') ? <DropdownMenuItem className="min-h-11" onClick={() => setCustom(exercise)}>Editar nombre y foto</DropdownMenuItem> : null}
                       <DropdownMenuItem
                         className="min-h-11"
                         disabled={index === 0}
@@ -239,7 +246,11 @@ export function SessionBuilder({
         >
           <Plus className="size-4" /> Añadir ejercicios
         </Button>
+        <Button variant="ghost" className="mb-4 min-h-11 w-full" onClick={() => setCustom('new')}>Crear ejercicio propio</Button>
+        {customExercises.length ? <details className="mb-4"><summary className="min-h-11 cursor-pointer py-3 text-sm">Tus ejercicios propios</summary>{customExercises.filter(item => !picked.some(selected => selected.id === item.id || selected.name === item.name)).map(item => <Button key={item.id} variant="ghost" className="min-h-11 w-full justify-start" onClick={() => setPicked(current => [...current, { ...item }])}><Plus />{item.name}</Button>)}</details> : null}
+        {saveError ? <p role="alert" className="text-sm text-destructive">{saveError}</p> : null}
       </div>
+      {custom ? <CustomExerciseDialog existing={custom === 'new' ? undefined : custom} names={picked.map(item => item.name)} onClose={() => setCustom(null)} onSave={exercise => { setPicked(current => custom === 'new' ? [...current, exercise] : current.map(item => item.id === exercise.id ? exercise : item)); setCustom(null); }} /> : null}
       <Dialog open={catalogOpen} onOpenChange={setCatalogOpen}>
         <DialogContent className="catalog-sheet">
           <div className="shrink-0 pr-8">

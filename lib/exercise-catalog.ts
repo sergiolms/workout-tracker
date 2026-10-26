@@ -20,7 +20,7 @@ export const exerciseCatalog = catalog as CatalogExercise[];
 // to the service worker after the first request.
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 const IMAGE_BASE = `${BASE_PATH}/exercise-images`;
-export const exerciseImageUrl = (image: string) => `${IMAGE_BASE}/${image}`;
+export const exerciseImageUrl = (image: string) => /^data:image\/(webp|jpeg|png);base64,/.test(image) ? image : `${IMAGE_BASE}/${image}`;
 
 const catalogById = new Map(exerciseCatalog.map((item) => [item.id, item]));
 const catalogByName = new Map(exerciseCatalog.map((item) => [item.name.toLowerCase(), item]));

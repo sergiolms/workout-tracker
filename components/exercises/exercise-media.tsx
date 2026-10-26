@@ -111,16 +111,16 @@ export function ExercisePreview({
         </div>
         {open && image && (
           <div className="bg-white">
-            {failed ? (
+            {failed || image.startsWith('data:image/') ? (
               <div>
                 <img
                   className="mx-auto max-h-[40dvh] w-full object-contain"
                   src={exerciseImageUrl(image)}
                   alt={name}
                 />
-                <output className="block px-4 py-2 text-center text-xs text-zinc-600">
+                {!image.startsWith('data:image/') ? <output className="block px-4 py-2 text-center text-xs text-zinc-600">
                   Animación no disponible. Se muestra la imagen.
-                </output>
+                </output> : null}
               </div>
             ) : (
               <video
