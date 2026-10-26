@@ -9,7 +9,31 @@ const alphabet = '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 export type ExerciseSection = { letter: string; items: CatalogExercise[] };
 type CatalogProps = { sections: ExerciseSection[]; renderExercise: (exercise: CatalogExercise) => ReactNode };
 
-export function SectionedExerciseCatalog({ sections, renderExercise }: CatalogProps) {
+export function SectionedExerciseCatalog(props: CatalogProps) {
+  const [paged, setPaged] = useState(false);
+  return <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex justify-end"><button type="button" className="min-h-11 px-2 text-sm underline underline-offset-4" aria-pressed={paged} onClick={() => setPaged(value => !value)}>Vista por páginas</button></div>
+    {paged ? <PagedCatalog {...props} /> : <VirtualizedCatalog {...props} />}
+  </div>;
+}
+
+function PagedCatalog({ sections, renderExercise }: CatalogProps) {
+  const [page, setPage] = useState(0);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const items = sections.flatMap(section => section.items.map(item => ({ item, letter: section.letter })));
+  const pages = Math.max(1, Math.ceil(items.length / 20));
+  const current = Math.min(page, pages - 1);
+  const first = current * 20;
+  const move = (next: number) => { setPage(next); heading.current?.focus(); heading.current?.scrollIntoView({ block: 'start' }); };
+  return <section className="flex min-h-0 flex-1 flex-col" aria-label="Catálogo por páginas" data-swipe-ignore>
+    <h2 ref={heading} tabIndex={-1} className="text-sm font-medium" aria-live="polite">{items.length ? `${first + 1}–${Math.min(first + 20, items.length)} de ${items.length} ejercicios` : 'No hay ejercicios'}</h2>
+    {sections[0]?.letter !== 'Resultados' ? <label className="my-2 flex items-center gap-2 text-sm">Ir a letra<select className="h-11 rounded border border-border bg-background px-2" value={items[first]?.letter ?? ''} onChange={event => move(Math.floor(items.findIndex(row => row.letter === event.target.value) / 20))}>{sections.map(section => <option key={section.letter} value={section.letter}>{section.letter}</option>)}</select></label> : null}
+    <ul className="min-h-0 flex-1 overflow-y-auto">{items.slice(first, first + 20).map(({ item }) => <li key={item.id}>{renderExercise(item)}</li>)}</ul>
+    <div className="flex items-center justify-between gap-2 pt-2"><button type="button" className="min-h-11 px-3 disabled:opacity-40" disabled={current === 0} onClick={() => move(current - 1)}>Anterior</button><span className="text-sm">{current + 1}/{pages}</span><button type="button" className="min-h-11 px-3 disabled:opacity-40" disabled={current + 1 >= pages} onClick={() => move(current + 1)}>Siguiente</button></div>
+  </section>;
+}
+
+function VirtualizedCatalog({ sections, renderExercise }: CatalogProps) {
   const list = useRef<HTMLElement>(null);
   const rows = useMemo(() => sections.flatMap(section => [{ key: `heading:${section.letter}`, letter: section.letter, item: null as CatalogExercise | null }, ...section.items.map(item => ({ key: item.id, letter: section.letter, item }))]), [sections]);
   const [sizes, setSizes] = useState<Map<string, number>>(new Map());

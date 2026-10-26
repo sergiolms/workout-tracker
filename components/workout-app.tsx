@@ -314,7 +314,8 @@ export default function HomePage() {
           className="app-shell bg-background text-foreground"
           data-rest-active={restDeadline !== null}
         >
-          <main ref={contentScroll} className="app-content" {...swipeHandlers}>
+          <a href="#app-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3">Saltar al contenido</a>
+          <main id="app-content" tabIndex={-1} ref={contentScroll} className="app-content" {...swipeHandlers}>
             <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
               <header className="app-header">
                 <button
