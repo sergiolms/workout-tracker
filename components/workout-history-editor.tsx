@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Check, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ExerciseSetEditor } from '@/components/exercise-set-editor';
+import { ExerciseLinker } from '@/components/exercise-linker';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { applyWorkoutEdit, createWorkoutEdits, statusFromLog, workoutStatusLabel, type WorkoutExerciseEdit } from '@/lib/workout-history';
 import type { AppState, ExerciseLog, WorkoutLog } from '@/lib/storage';
@@ -38,6 +39,8 @@ export function WorkoutHistoryEditor({ editable, state, workout, onSave, onClose
         return <details key={log.id} className="rounded-xl border border-border bg-background" open={edits.length === 1 ? true : undefined}>
           <summary className="flex min-h-14 cursor-pointer flex-wrap items-center justify-between gap-2 p-3"><strong className="min-w-0 flex-1 break-words text-sm">{log.exercise}</strong><span className="shrink-0 text-xs font-semibold text-muted-foreground">{workoutStatusLabel[status]}</span></summary>
           <div className="space-y-3 border-t border-border p-3">
+            <ExerciseLinker name={log.exercise} onLink={catalogId => change(index, value => ({ ...value, exerciseId: `catalog:${catalogId}` }))} />
+            {log.exerciseId?.startsWith('catalog:') ? <p className="text-sm text-muted-foreground">Vinculado al catálogo. Se aplicará al guardar los cambios.</p> : null}
             {!edit.hasLog ? <p className="text-xs text-muted-foreground">No había detalle de series guardado. Revisa los valores si quieres completar este registro.</p> : null}
             <div className="flex flex-wrap gap-2"><Button className="min-h-11 rounded-lg" data-haptic="success" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: false, sets: value.sets.map((set) => ({ ...set, done: true })) }))}><Check className="size-4" /> Marcar todas</Button><Button className="min-h-11 rounded-lg" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: false, sets: value.sets.map((set) => ({ ...set, done: false })) }))}>Pendiente</Button><Button className="min-h-11 rounded-lg" variant="outline" onClick={() => change(index, (value) => ({ ...value, skipped: true, sets: value.sets.map((set) => ({ ...set, done: false })) }))}>No realizado</Button></div>
             <ExerciseSetEditor name={log.exercise} mode={log.mode ?? template?.mode} loadKind={log.loadKind ?? template?.loadKind} sets={log.sets} load={log.load} unit={unit} disabled={!editable} onChange={sets => change(index, value => ({ ...value, sets, skipped: false }))} />

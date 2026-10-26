@@ -257,10 +257,6 @@ export async function parseHevyCsv(
       warnings.add(
         'Los tipos especiales de serie se conservan en los detalles de Hevy; se contabilizan como trabajo.',
       );
-    if (duration !== undefined || distance !== undefined)
-      warnings.add(
-        'Las series por tiempo o distancia conservan sus valores en las notas; el editor de series muestra carga y repeticiones.',
-      );
     const sourceDetails = [
       get('exercise_notes'),
       rpe !== undefined ? `RPE ${rpe}` : '',
@@ -278,6 +274,8 @@ export async function parseHevyCsv(
       routine: workoutId,
       workoutId,
       exercise,
+      exerciseId: await identity(['exercise', exercise]),
+      unit: 'kg',
       load: weight ?? 0,
       sets: [],
       rir: 0,
@@ -291,6 +289,11 @@ export async function parseHevyCsv(
       done: true,
       load: weight ?? 0,
       kind: setType === 'warmup' ? 'warmup' : 'work',
+      sourceType: setType,
+      ...(duration !== undefined ? { seconds: duration } : {}),
+      ...(distance !== undefined ? { distanceKm: distance } : {}),
+      ...(rpe !== undefined ? { rpe } : {}),
+      ...(get('superset_id') ? { supersetId: get('superset_id') } : {}),
     };
     if (
       !reps &&
@@ -325,7 +328,7 @@ export async function parseHevyCsv(
     workouts.set(workoutId, workout);
   }
   state.workoutLogs = [...workouts.values()];
-  state.exerciseLogs = [...logs.values()];
+  state.exerciseLogs = [...logs.values()].map(log => ({ ...log, mode: log.sets.every(set => set.reps === 0 && set.seconds !== undefined) ? 'time' : 'reps' }));
   if (
     isMeasurement &&
     keys.some(

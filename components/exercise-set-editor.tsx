@@ -109,6 +109,7 @@ export function ExerciseSetEditor({
                 />
               </div>
             ) : null}
+            {set.rpe !== undefined || set.distanceKm !== undefined || set.supersetId || (set.sourceType && !['normal', 'warmup'].includes(set.sourceType)) ? <p className="mt-2 text-sm text-muted-foreground">{[set.rpe !== undefined ? `Esfuerzo original RPE ${set.rpe}/10` : '', set.distanceKm !== undefined ? `${set.distanceKm} km` : '', set.supersetId ? `Superserie ${set.supersetId}` : '', set.sourceType && !['normal', 'warmup'].includes(set.sourceType) ? `Tipo original: ${set.sourceType}` : ''].filter(Boolean).join(' · ')}</p> : null}
           </div>
         );
       })}
