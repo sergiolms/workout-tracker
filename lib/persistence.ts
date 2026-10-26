@@ -17,6 +17,7 @@ type Dependencies = {
   saveLocal: (state: AppState) => Promise<void>;
   backup: (state: AppState, source: 'local' | 'cloud') => Promise<void>;
   loadCloud: () => Promise<AppState | null>;
+  loadFullCloud?: () => Promise<AppState>;
   saveCloud: (
     state: AppState,
     expectedVersion: string | null,
@@ -108,12 +109,18 @@ export class WorkoutPersistence {
     if (value.cloudRevision !== undefined) {
       if (
         this.base.cloudRevision !== undefined &&
-        value.cloudRevision <= this.base.cloudRevision
+        (value.cloudRevision < this.base.cloudRevision ||
+          (value.cloudRevision === this.base.cloudRevision &&
+            (value.history?.generation ?? 0) <=
+              (this.base.history?.generation ?? 0)))
       )
         return;
       if (
         this.incoming?.cloudRevision !== undefined &&
-        value.cloudRevision < this.incoming.cloudRevision
+        (value.cloudRevision < this.incoming.cloudRevision ||
+          (value.cloudRevision === this.incoming.cloudRevision &&
+            (value.history?.generation ?? 0) <
+              (this.incoming.history?.generation ?? 0)))
       )
         return;
     }
@@ -225,7 +232,14 @@ export class WorkoutPersistence {
         this.pendingReadFailed = false;
       }
       if (!this.reconciled) {
-        const remote = await this.dependencies.loadCloud();
+        let remote = await this.dependencies.loadCloud();
+        if (this.recovered && remote?.history && !remote.history.complete) {
+          if (!this.dependencies.loadFullCloud)
+            throw Error(
+              'No se pueden reconciliar cambios pendientes con un historial incompleto.',
+            );
+          remote = await this.dependencies.loadFullCloud();
+        }
         if (!this.active) return;
         // Cache contents never become a cloud write on startup, even if the
         // cache has a newer clock or Firebase has no document for this account.
@@ -352,7 +366,10 @@ export class WorkoutPersistence {
     if (
       remote.cloudRevision !== undefined &&
       this.base.cloudRevision !== undefined &&
-      remote.cloudRevision <= this.base.cloudRevision
+      (remote.cloudRevision < this.base.cloudRevision ||
+        (remote.cloudRevision === this.base.cloudRevision &&
+          (remote.history?.generation ?? 0) <=
+            (this.base.history?.generation ?? 0)))
     )
       return;
     const merged = mergeStates(this.base, this.state, remote);
@@ -410,6 +427,20 @@ export class WorkoutPersistence {
 
   async flushLocal() {
     await this.localQueue;
+  }
+  async hydrate(load: () => Promise<AppState>) {
+    const remote = await load();
+    if (!this.active) throw Error('La cuenta activa ha cambiado.');
+    this.queueRemote(remote);
+    await this.sync();
+    while (
+      this.active &&
+      this.incoming &&
+      !this.status.conflicts?.length &&
+      this.status.cloud !== 'error'
+    )
+      await this.sync();
+    return this.state;
   }
   dispose() {
     this.active = false;

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { backupPreview, importBackup, parseBackup } from '@/lib/backup-import';
 import type { AppState } from '@/lib/storage';
+import { useHistorySource } from '@/components/history-source';
 
 const labels = {
   workoutLogs: 'Entrenamientos',
@@ -32,6 +33,7 @@ export function BackupImporter({
   format?: 'base' | 'hevy';
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const history = useHistorySource();
   const [incoming, setIncoming] = useState<AppState | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,7 +44,9 @@ export function BackupImporter({
       <input
         ref={input}
         aria-label={
-          format === 'hevy' ? 'Archivo CSV de Hevy' : 'Archivo de copia de Base'
+          format === 'hevy'
+            ? 'Archivo CSV de Hevy'
+            : 'Archivo de copia de Zero to Hero'
         }
         type="file"
         accept={format === 'hevy' ? '.csv,text/csv' : 'application/json,.json'}
@@ -57,6 +61,7 @@ export function BackupImporter({
           setWarnings([]);
           setLoading(true);
           try {
+            await history?.loadAll();
             if (file.size > 20_000_000) throw Error('El archivo supera 20 MB.');
             const text = await file.text();
             if (format === 'hevy') {
@@ -87,7 +92,7 @@ export function BackupImporter({
           ? 'Leyendo archivo…'
           : format === 'hevy'
             ? 'Importar CSV de Hevy'
-            : 'Importar copia de Base'}
+            : 'Importar copia de Zero to Hero'}
       </Button>
       {format === 'hevy' ? (
         <p className="mt-2 text-xs text-muted-foreground">

@@ -1,4 +1,5 @@
-import type { PlanWeek, WorkoutLog } from './storage';
+import type { AppState, PlanWeek, WorkoutLog } from './storage';
+import { effectiveHistorySummaries } from './history-summary.ts';
 
 export type PlanSlot = { week: number; routine: string };
 
@@ -8,7 +9,14 @@ export function countsTowardPlan(workout: WorkoutLog): boolean {
   );
 }
 
-export function completedPlanSlots(logs: WorkoutLog[]): Set<string> {
+export function completedPlanSlots(
+  input: WorkoutLog[] | AppState,
+): Set<string> {
+  if (!Array.isArray(input) && input.history && !input.history.complete)
+    return new Set(
+      effectiveHistorySummaries(input).flatMap((month) => month.planSlots),
+    );
+  const logs = Array.isArray(input) ? input : input.workoutLogs;
   return new Set(
     logs
       .filter(
@@ -19,7 +27,7 @@ export function completedPlanSlots(logs: WorkoutLog[]): Set<string> {
   );
 }
 
-export function planProgress(plan: PlanWeek[], logs: WorkoutLog[]) {
+export function planProgress(plan: PlanWeek[], logs: WorkoutLog[] | AppState) {
   const completed = completedPlanSlots(logs);
   const slots = plan.flatMap((week) =>
     week.routines.map((routine) => `${week.week}:${routine}`),
@@ -32,7 +40,7 @@ export function planProgress(plan: PlanWeek[], logs: WorkoutLog[]) {
 
 export function nextPlanSession(
   plan: PlanWeek[],
-  logs: WorkoutLog[],
+  logs: WorkoutLog[] | AppState,
   currentWeek: number,
   currentRoutine: string,
 ): PlanSlot | null {

@@ -62,7 +62,6 @@ export function ExercisePreview({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [dark, setDark] = useState(false);
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const failed = Boolean(image && failedImage === image);
   const steps = conciseExerciseText(description);
@@ -77,9 +76,6 @@ export function ExercisePreview({
       <DialogTrigger
         aria-label={`Ver demostración de ${name}`}
         className={`group relative block shrink-0 overflow-hidden rounded-xl bg-white outline-offset-4 transition focus-visible:outline-2 focus-visible:outline-primary ${compact ? 'size-16' : 'exercise-preview'}`}
-        onClick={(event) => {
-          setDark(Boolean(event.currentTarget.closest('.dark')));
-        }}
       >
         <ExerciseImage image={image} name={name} />
         <span
@@ -91,7 +87,7 @@ export function ExercisePreview({
       </DialogTrigger>
       <DialogContent
         showCloseButton={false}
-        className={`${dark ? 'dark' : ''} max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto overscroll-contain rounded-3xl p-0 sm:max-w-[560px]`}
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto overscroll-contain rounded-3xl p-0 sm:max-w-[560px]"
       >
         <div className="sticky top-0 z-10 flex items-start gap-3 border-b border-border bg-popover p-4 sm:p-5">
           <div className="min-w-0 flex-1">

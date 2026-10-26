@@ -4,6 +4,7 @@ import {
   weeksFromPeriods,
   type AppState,
 } from './storage.ts';
+import type { HistoryCoverage } from './history-summary.ts';
 
 export type RecordValue = unknown;
 export type StateRecords = Map<string, RecordValue>;
@@ -78,6 +79,7 @@ export function recordsState(
   records: StateRecords,
   updatedAt?: string,
   cloudRevision?: number,
+  history?: HistoryCoverage,
 ): AppState {
   const state: AppState = {
     ...defaultState,
@@ -93,6 +95,7 @@ export function recordsState(
     warmupDone: [],
     classes: [],
     updatedAt,
+    ...(history ? { history } : {}),
   };
   for (const [key, value] of records) {
     const colon = key.indexOf(':');
@@ -280,5 +283,13 @@ export function mergeStates(
     );
     if (value !== undefined) merged.set(key, value);
   }
-  return { state: recordsState(merged, local.updatedAt), conflicts };
+  return {
+    state: recordsState(
+      merged,
+      local.updatedAt,
+      remote.cloudRevision,
+      remote.history ?? local.history,
+    ),
+    conflicts,
+  };
 }

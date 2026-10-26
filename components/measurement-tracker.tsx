@@ -19,6 +19,11 @@ import {
 } from '@/lib/measurement-input';
 import { MeasurementForm } from '@/components/measurement-form';
 import { moveToTrash } from '@/lib/record-trash';
+import {
+  HistoryLoading,
+  monthsBetween,
+  useHistoryMonths,
+} from '@/components/history-source';
 
 type MetricKey = 'weight' | 'waist';
 const formatValue = (value: number) =>
@@ -219,6 +224,12 @@ export function MeasurementTracker({
   const [metric, setMetric] = useState<'weight' | 'waist'>('weight');
   const [range, setRange] = useState(90);
   const [now] = useState(() => Date.now());
+  const status = useHistoryMonths(
+    state,
+    range
+      ? monthsBetween(new Date(now - range * 86400000), new Date(now))
+      : 'all',
+  );
   const chartEntries = range
     ? entries.filter(
         (entry) => Date.parse(entry.date) >= now - range * 86400000,
@@ -306,14 +317,17 @@ export function MeasurementTracker({
             </button>
           ))}
         </fieldset>
-        <MeasurementChart
-          entries={chartEntries}
-          label={metric === 'weight' ? 'Peso' : 'Cintura'}
-          metric={metric}
-          unit={metric === 'weight' ? 'kg' : 'cm'}
-        />
+        <HistoryLoading status={status}>
+          <MeasurementChart
+            entries={chartEntries}
+            label={metric === 'weight' ? 'Peso' : 'Cintura'}
+            metric={metric}
+            unit={metric === 'weight' ? 'kg' : 'cm'}
+          />
+        </HistoryLoading>
       </section>
       <HistoryBrowser
+        state={state}
         title="Historial de medidas"
         entries={entries}
         searchText={(entry) =>
@@ -410,7 +424,7 @@ export function MeasurementTracker({
               Cancelar
             </Button>
             <Button
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-destructive text-destructive-foreground hover:brightness-95"
               onClick={() => {
                 if (deleting)
                   updateState((current) =>

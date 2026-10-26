@@ -17,6 +17,9 @@ import {
 } from 'firebase/firestore';
 import { firebaseRecordDatabase } from '../lib/firebase.ts';
 import { CloudRepository } from '../lib/cloud-repository.ts';
+import { PagedCloudRepository } from '../lib/paged-cloud-repository.ts';
+import { historyTotals } from '../lib/history-summary.ts';
+import { WorkoutPersistence } from '../lib/persistence.ts';
 import { CloudConflict } from '../lib/cloud-records.ts';
 import { defaultState } from '../lib/storage.ts';
 import { moveToTrash, restoreDeleted } from '../lib/record-trash.ts';
@@ -52,6 +55,106 @@ const repository = (user, firestore = db(user)) =>
       db: firestore,
     })),
   );
+
+test('el adaptador real consulta fechas y cursores, conserva el historial no cargado y actualiza los resúmenes', async () => {
+  const firestore = db('paged');
+  const source = {
+    ...defaultState,
+    cardioLogs: Array.from({ length: 105 }, (_, i) => ({
+      id: `a-${i}`,
+      date: '2020-02-10T12:00:00.000Z',
+      type: 'Caminar',
+      minutes: 30,
+    })),
+    mobilityDone: ['2020-02-10:corta-Open book'],
+  };
+  await setDoc(doc(firestore, 'users/paged/appState/main'), source);
+  const create = () =>
+    new PagedCloudRepository(
+      firebaseRecordDatabase('paged', async () => ({
+        auth: { currentUser: { uid: 'paged', isAnonymous: false } },
+        db: firestore,
+      })),
+    );
+  const first = create();
+  const initial = await first.load();
+  assert.equal(initial.cardioLogs.length, 0);
+  assert.equal(historyTotals(initial).cardioMinutes, 3150);
+  const month = await first.loadMonth('2020-02');
+  assert.equal(month.cardioLogs.length, 105);
+  assert.equal(month.mobilityDone.length, 1);
+  await first.save(
+    {
+      ...month,
+      cardioLogs: month.cardioLogs.filter((log) => log.id !== 'a-0'),
+    },
+    month.updatedAt,
+    month,
+  );
+  const other = create();
+  const loaded = await other.load();
+  assert.equal(loaded.cardioLogs.length, 0);
+  assert.equal(historyTotals(loaded).cardioMinutes, 3120);
+  const full = await other.loadAll();
+  assert.equal(full.cardioLogs.length, 104);
+  assert.deepEqual(
+    (
+      await getDocFromServer(doc(firestore, 'users/paged/appState/main'))
+    ).data(),
+    source,
+  );
+});
+
+test('dos clientes paginados mantienen la actualización optimista al hidratar otro mes y sincronizar', async () => {
+  const create = () => {
+    const firestore = db('paged-live');
+    const repo = new PagedCloudRepository(
+      firebaseRecordDatabase('paged-live', async () => ({
+        auth: { currentUser: { uid: 'paged-live', isAnonymous: false } },
+        db: firestore,
+      })),
+    );
+    const events = [];
+    const store = new WorkoutPersistence({
+      loadLocal: async () => null,
+      saveLocal: async () => {},
+      backup: async () => {},
+      loadCloud: repo.load,
+      saveCloud: repo.save,
+      subscribeCloud: repo.subscribe,
+      onChange: (state) => events.push(state.mobilityDone.slice()),
+    });
+    return { repo, store, events };
+  };
+  const first = create(),
+    second = create();
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${day}:corta-Open book`;
+  try {
+    await first.store.initialize();
+    await first.store.sync();
+    await second.store.initialize();
+    await second.store.sync();
+    first.store.update((state) => ({ ...state, mobilityDone: [key] }));
+    const afterMark = first.events.length;
+    await first.store.sync();
+    await second.store.hydrate(() => second.repo.loadMonth('2020-02'));
+    second.store.update((state) => ({ ...state, theme: 'dark' }));
+    await second.store.sync();
+    await first.store.hydrate(first.repo.load);
+    assert.equal(first.store.state.theme, 'dark');
+    assert.deepEqual(first.store.state.mobilityDone, [key]);
+    assert.ok(
+      first.events.slice(afterMark).every((keys) => keys.includes(key)),
+    );
+    const full = await second.store.hydrate(second.repo.loadAll);
+    assert.equal(full.history.complete, true);
+    assert.deepEqual(full.mobilityDone, [key]);
+  } finally {
+    first.store.dispose();
+    second.store.dispose();
+  }
+});
 
 test('owners can query their records; other users and unauthenticated clients cannot read or write them', async () => {
   const alice = db('alice');

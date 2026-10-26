@@ -15,9 +15,10 @@ export type StoredRecord = {
   value?: unknown;
   deleted: boolean;
   sequence: number;
+  historyDate?: string;
 };
 export type CloudHeader = {
-  schema: 1;
+  schema: 1 | 2;
   collection: string;
   sequence: number;
   updatedAt: string;
@@ -42,6 +43,17 @@ export type RecordDatabase = {
     change: () => void,
     error: (error: unknown) => void,
   ) => () => void;
+  prefixPage?: (
+    collection: string,
+    prefix: string,
+    after?: string,
+  ) => Promise<Array<{ id: string; record: StoredRecord }>>;
+  historyPage?: (
+    collection: string,
+    start: string,
+    end: string,
+    after?: { id: string; date: string },
+  ) => Promise<Array<{ id: string; record: StoredRecord }>>;
 };
 const HEADER = 'appState/records-v1';
 const LEGACY = 'appState/main';
@@ -192,17 +204,32 @@ export class CloudRepository {
       (key) => !equal(before.get(key), local.get(key)),
     );
     const batches: string[][] = [];
-    let batch: string[] = []; let bytes = 0;
+    let batch: string[] = [];
+    let bytes = 0;
     for (const key of changed) {
       recordId(key);
-      const nextBytes = new TextEncoder().encode(canonical(local.get(key))).length;
+      const nextBytes = new TextEncoder().encode(
+        canonical(local.get(key)),
+      ).length;
       if (nextBytes > 900000)
         throw Error(
           'Un registro es demasiado grande. Divide su contenido antes de guardar.',
         );
-      const estimate = nextBytes + new TextEncoder().encode(canonical(before.get(key))).length + recordId(key).length * 2 + 2000;
-      if (batch.length && (batch.length >= 200 || bytes + estimate > 2_000_000)) { batches.push(batch); batch = []; bytes = 0; }
-      batch.push(key); bytes += estimate;
+      const estimate =
+        nextBytes +
+        new TextEncoder().encode(canonical(before.get(key))).length +
+        recordId(key).length * 2 +
+        2000;
+      if (
+        batch.length &&
+        (batch.length >= 200 || bytes + estimate > 2_000_000)
+      ) {
+        batches.push(batch);
+        batch = [];
+        bytes = 0;
+      }
+      batch.push(key);
+      bytes += estimate;
     }
     if (batch.length) batches.push(batch);
     // Each chunk is idempotent: a retry accepts fields already equal to ours.

@@ -1,6 +1,7 @@
 import { NavigationMenu as NavigationMenuPrimitive } from '@base-ui/react/navigation-menu';
 import { cva } from 'class-variance-authority';
 
+import { useOverlayTheme } from './dialog';
 import { cn } from '@/lib/utils';
 import { ChevronDownIcon } from 'lucide-react';
 
@@ -103,6 +104,7 @@ function NavigationMenuPositioner({
   alignOffset = 0,
   ...props
 }: NavigationMenuPrimitive.Positioner.Props) {
+  const dark = useOverlayTheme();
   return (
     <NavigationMenuPrimitive.Portal>
       <NavigationMenuPrimitive.Positioner
@@ -111,6 +113,7 @@ function NavigationMenuPositioner({
         align={align}
         alignOffset={alignOffset}
         className={cn(
+          dark && 'dark',
           'ease-[cubic-bezier(0.22,1,0.36,1)] data-[side=bottom]:before:top-[-10px] data-[side=bottom]:before:right-0 data-[side=bottom]:before:left-0 isolate z-50 h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom] duration-[0.35s] data-instant:transition-none',
           className,
         )}

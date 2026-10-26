@@ -9,6 +9,11 @@ import {
 } from '@/lib/exercise-history';
 import { ExerciseHistoryPicker } from '@/components/exercises/exercise-history-picker';
 import { estimatedOneRepMax } from '@/lib/training-volume';
+import {
+  HistoryLoading,
+  monthsBetween,
+  useHistoryMonths,
+} from '@/components/history-source';
 
 const number = (value: number) =>
   value.toLocaleString('es-ES', { maximumFractionDigits: 1 });
@@ -31,6 +36,12 @@ export function ExerciseHistory({
   const [range, setRange] = useState(90);
   const [metric, setMetric] = useState<'load' | 'reps' | 'volume'>('load');
   const [now] = useState(Date.now);
+  const status = useHistoryMonths(
+    state,
+    range
+      ? monthsBetween(new Date(now - range * 86400000), new Date(now))
+      : 'all',
+  );
   const all = useMemo(
     () => exerciseHistory(state, exercise, excludeWorkoutId),
     [state, exercise, excludeWorkoutId],
@@ -57,10 +68,10 @@ export function ExerciseHistory({
       : activeMetric === 'volume'
         ? `${exercise.unit ?? 'kg'}·rep`
         : 'rep';
-  const best = all.length
+  const best = rows.length
     ? assisted && activeMetric === 'load'
-      ? Math.min(...all.map((row) => row.load))
-      : Math.max(...all.map((row) => row[activeMetric]))
+      ? Math.min(...rows.map((row) => row.load))
+      : Math.max(...rows.map((row) => row[activeMetric]))
     : 0;
   const points = rows.map((row) => row[activeMetric]);
   const estimates = rows.flatMap((row) => {
@@ -75,36 +86,7 @@ export function ExerciseHistory({
   }));
   return (
     <section aria-label="Evolución del ejercicio" className="mt-4">
-      {estimates.length ? (
-        <details className="mb-4">
-          <summary className="min-h-11 cursor-pointer py-3 text-sm">
-            1RM estimado del periodo: {number(Math.max(...estimates))}{' '}
-            {exercise.unit ?? 'kg'}
-          </summary>
-          <p className="text-sm text-muted-foreground">
-            Aproximación con la fórmula Epley: carga × (1 + repeticiones / 30).
-            Solo usa series de trabajo realizadas de 1–10 repeticiones con carga
-            total. No es una marca real ni un objetivo que debas probar.
-          </p>
-        </details>
-      ) : null}
-      <div className="flex flex-wrap justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {timed
-              ? 'Mayor tiempo por serie'
-              : activeMetric === 'load'
-                ? assisted
-                  ? 'Menor ayuda registrada'
-                  : 'Mayor carga registrada'
-                : activeMetric === 'reps'
-                  ? 'Más repeticiones en una serie'
-                  : 'Mayor volumen por sesión'}
-          </p>
-          <p className="mt-1 text-3xl font-bold tabular-nums">
-            {all.length ? `${number(best)} ${suffix}` : 'Sin registros'}
-          </p>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <label className="text-sm">
           Periodo
           <select
@@ -117,93 +99,129 @@ export function ExerciseHistory({
             <option value={0}>Todo</option>
           </select>
         </label>
+        {!repsOnly && !timed ? (
+          <label className="mt-3 block text-sm">
+            Comparar
+            <select
+              className="ml-2 h-11 rounded border border-border bg-background px-2"
+              value={metric}
+              onChange={(event) =>
+                setMetric(event.target.value as typeof metric)
+              }
+            >
+              <option value="load">Carga máxima</option>
+              <option value="reps">Repeticiones por serie</option>
+              {!assisted ? (
+                <option value="volume">Volumen realizado</option>
+              ) : null}
+            </select>
+          </label>
+        ) : null}
       </div>
-      {!repsOnly && !timed ? (
-        <label className="mt-3 block text-sm">
-          Comparar
-          <select
-            className="ml-2 h-11 rounded border border-border bg-background px-2"
-            value={metric}
-            onChange={(event) => setMetric(event.target.value as typeof metric)}
+      <HistoryLoading status={status}>
+        {estimates.length ? (
+          <details className="mb-4">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm">
+              1RM estimado del periodo: {number(Math.max(...estimates))}{' '}
+              {exercise.unit ?? 'kg'}
+            </summary>
+            <p className="text-sm text-muted-foreground">
+              Aproximación con la fórmula Epley: carga × (1 + repeticiones /
+              30). Solo usa series de trabajo realizadas de 1–10 repeticiones
+              con carga total. No es una marca real ni un objetivo que debas
+              probar.
+            </p>
+          </details>
+        ) : null}
+        <div className="flex flex-wrap justify-between gap-3">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {timed
+                ? 'Mayor tiempo por serie'
+                : activeMetric === 'load'
+                  ? assisted
+                    ? 'Menor ayuda registrada'
+                    : 'Mayor carga del periodo'
+                  : activeMetric === 'reps'
+                    ? 'Más repeticiones en una serie'
+                    : 'Mayor volumen por sesión'}
+            </p>
+            <p className="mt-1 text-3xl font-bold tabular-nums">
+              {rows.length ? `${number(best)} ${suffix}` : 'Sin registros'}
+            </p>
+          </div>
+        </div>
+        {rows.length > 1 ? (
+          <svg
+            aria-label={`Evolución de ${rows.length} registros. Datos detallados debajo.`}
+            className="my-4 h-auto max-h-48 w-full text-primary"
+            viewBox="0 0 336 140"
           >
-            <option value="load">Carga máxima</option>
-            <option value="reps">Repeticiones por serie</option>
-            {!assisted ? (
-              <option value="volume">Volumen realizado</option>
-            ) : null}
-          </select>
-        </label>
-      ) : null}
-      {rows.length > 1 ? (
-        <svg
-          aria-label={`Evolución de ${rows.length} registros. Datos detallados debajo.`}
-          className="my-4 h-auto max-h-48 w-full text-primary"
-          viewBox="0 0 336 140"
-        >
-          <title>Evolución de {exercise.name}</title>
-          <text x="24" y="14" fill="var(--muted-foreground)" fontSize="11">
-            {number(high)} {suffix}
-          </text>
-          <text x="24" y="136" fill="var(--muted-foreground)" fontSize="11">
-            {number(low)} {suffix}
-          </text>
-          <path
-            d={coords
-              .map((point, i) => `${i ? 'L' : 'M'}${point.x},${point.y}`)
-              .join(' ')}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          {coords.map((point, i) => (
-            <circle
-              key={rows[i].id}
-              cx={point.x}
-              cy={point.y}
-              r="3"
-              fill="currentColor"
+            <title>Evolución de {exercise.name}</title>
+            <text x="24" y="14" fill="var(--muted-foreground)" fontSize="11">
+              {number(high)} {suffix}
+            </text>
+            <text x="24" y="136" fill="var(--muted-foreground)" fontSize="11">
+              {number(low)} {suffix}
+            </text>
+            <path
+              d={coords
+                .map((point, i) => `${i ? 'L' : 'M'}${point.x},${point.y}`)
+                .join(' ')}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
             />
-          ))}
-        </svg>
-      ) : null}
-      {rows.length ? (
-        <>
-          <p className="my-3 text-sm text-muted-foreground">
-            {rows.length} registros en el periodo. La mejor marca usa todo el
-            historial.
-          </p>
-          <ol className="mt-3 max-h-96 overflow-y-auto">
-            {rows.toReversed().map((row) => (
-              <li key={row.id} className="border-b border-border py-3">
-                <div className="flex justify-between gap-2 text-sm">
-                  <strong>{day(row.date)}</strong>
-                  <span className="tabular-nums">
-                    {number(row[activeMetric])} {suffix}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {row.sets
-                    .map(
-                      (set) =>
-                        `${repsOnly ? '' : `${number(set.load ?? row.original.load)} ${exercise.unit ?? 'kg'} × `}${timed ? `${set.seconds ?? 0} s` : `${set.reps} rep`}`,
-                    )
-                    .join(' · ')}
-                </p>
-              </li>
+            {coords.map((point, i) => (
+              <circle
+                key={rows[i].id}
+                cx={point.x}
+                cy={point.y}
+                r="3"
+                fill="currentColor"
+              />
             ))}
-          </ol>
-        </>
-      ) : (
-        <p className="py-5 text-sm text-muted-foreground">
-          Todavía no hay series de trabajo finalizadas en este periodo.
-        </p>
-      )}
-      {activeMetric === 'volume' ? (
-        <p className="mt-3 text-sm text-muted-foreground">
-          Suma de carga × repeticiones de las series realizadas. Compara este
-          ejercicio consigo mismo, usando siempre el mismo criterio de carga.
-        </p>
-      ) : null}
+          </svg>
+        ) : null}
+        {rows.length ? (
+          <>
+            <p className="my-3 text-sm text-muted-foreground">
+              {rows.length} registros en el periodo. La mejor marca usa todo el
+              historial.
+            </p>
+            <ol className="mt-3 max-h-96 overflow-y-auto">
+              {rows.toReversed().map((row) => (
+                <li key={row.id} className="border-b border-border py-3">
+                  <div className="flex justify-between gap-2 text-sm">
+                    <strong>{day(row.date)}</strong>
+                    <span className="tabular-nums">
+                      {number(row[activeMetric])} {suffix}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {row.sets
+                      .map(
+                        (set) =>
+                          `${repsOnly ? '' : `${number(set.load ?? row.original.load)} ${exercise.unit ?? 'kg'} × `}${timed ? `${set.seconds ?? 0} s` : `${set.reps} rep`}`,
+                      )
+                      .join(' · ')}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </>
+        ) : (
+          <p className="py-5 text-sm text-muted-foreground">
+            Todavía no hay series de trabajo finalizadas en este periodo.
+          </p>
+        )}
+        {activeMetric === 'volume' ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Suma de carga × repeticiones de las series realizadas. Compara este
+            ejercicio consigo mismo, usando siempre el mismo criterio de carga.
+          </p>
+        ) : null}
+      </HistoryLoading>
     </section>
   );
 }

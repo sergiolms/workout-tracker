@@ -17,9 +17,12 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { countsTowardPlan, planProgress } from '@/lib/plan-progress';
+import { planProgress } from '@/lib/plan-progress';
 import { type AppState, type CardioLog, type WorkoutLog } from '@/lib/storage';
-import { workingSets } from '@/lib/exercise-sets';
+import { historyTotals } from '@/lib/history-summary';
+import { mobilityHistory, type MobilitySession } from '@/lib/mobility-history';
+import { MobilityHistoryEntry } from '@/components/mobility-history-entry';
+import { MobilityRoutine } from '@/components/mobility-routine';
 import {
   ActivityHistoryEditor,
   ActivityDeleteDialog,
@@ -52,9 +55,9 @@ export function ProgressView({
   const [view, setView] = useState<
     'overview' | 'exercises' | 'measurements' | 'history'
   >('overview');
-  const [historyKind, setHistoryKind] = useState<'workouts' | 'activities'>(
-    'workouts',
-  );
+  const [historyKind, setHistoryKind] = useState<
+    'workouts' | 'activities' | 'mobility'
+  >('workouts');
   const [editingActivity, setEditingActivity] = useState<CardioLog | null>(
     null,
   );
@@ -65,41 +68,18 @@ export function ProgressView({
   const [deletingWorkout, setDeletingWorkout] = useState<WorkoutLog | null>(
     null,
   );
-  const workoutKeys = new Set(
-    state.workoutLogs.filter(countsTowardPlan).map((workout) => workout.id),
-  );
-  const legacyWorkoutKeys = new Set(
-    state.exerciseLogs
-      .filter((log) => !log.workoutId && log.sets.some((set) => set.done))
-      .map(
-        (log) =>
-          `${new Date(log.date).toLocaleDateString('en-CA')}:${log.week}:${log.routine}`,
-      ),
-  );
-  const strengthSessions = new Set([...workoutKeys, ...legacyWorkoutKeys]).size;
-  const cardioMinutes = state.cardioLogs.reduce(
-    (sum, log) => sum + log.minutes,
-    0,
-  );
-  const steps = state.cardioLogs.reduce(
-    (sum, log) => sum + (log.steps ?? 0),
-    0,
-  );
+  const [editingMobility, setEditingMobility] =
+    useState<MobilitySession | null>(null);
+  const mobility = mobilityHistory(state.mobilityDone);
+  const totals = historyTotals(state);
+  const strengthSessions = totals.workouts;
+  const cardioMinutes = totals.cardioMinutes;
+  const steps = totals.steps;
   const totalWeeks = state.plan.length;
   const activeWeek = state.plan.find((week) => week.week === state.week);
-  const planStatus = planProgress(state.plan, state.workoutLogs);
-  const performedExercises = state.exerciseLogs.filter(
-    (log) =>
-      !log.skipped &&
-      !log.painUnknown &&
-      workingSets(log.sets).some((set) => set.done),
-  );
-  const painFree = performedExercises.length
-    ? Math.round(
-        (performedExercises.filter((log) => log.pain < 2).length /
-          performedExercises.length) *
-          100,
-      )
+  const planStatus = planProgress(state.plan, state);
+  const painFree = totals.painKnown
+    ? Math.round((totals.painFree / totals.painKnown) * 100)
     : null;
   const deleteWorkout = () => {
     if (!deletingWorkout) return;
@@ -156,6 +136,9 @@ export function ProgressView({
             />
           </div>
           <ActivityCalendar
+            state={state}
+            mobility={mobility}
+            onMobilitySelect={setEditingMobility}
             workouts={state.workoutLogs}
             activities={state.cardioLogs}
             onWorkoutSelect={setEditingWorkout}
@@ -200,6 +183,7 @@ export function ProgressView({
             items={[
               { id: 'workouts', label: 'Entrenamientos' },
               { id: 'activities', label: 'Actividad' },
+              { id: 'mobility', label: 'Movilidad' },
             ]}
           />
           {historyKind === 'workouts' ? (
@@ -210,6 +194,7 @@ export function ProgressView({
                 updateState={updateState}
               />
               <HistoryBrowser
+                state={state}
                 title="Historial de entrenamientos"
                 entries={state.workoutLogs}
                 searchText={(log) =>
@@ -229,8 +214,9 @@ export function ProgressView({
                 )}
               />
             </>
-          ) : (
+          ) : historyKind === 'activities' ? (
             <HistoryBrowser
+              state={state}
               title="Actividad registrada"
               entries={state.cardioLogs}
               searchText={(log) => log.type}
@@ -242,9 +228,53 @@ export function ProgressView({
                 />
               )}
             />
+          ) : (
+            <HistoryBrowser
+              state={state}
+              title="Movilidad registrada"
+              entries={mobility}
+              searchText={(session) =>
+                [session.mode, ...session.exercises].join(' ')
+              }
+              renderEntry={(session) => (
+                <MobilityHistoryEntry
+                  session={session}
+                  onEdit={() => setEditingMobility(session)}
+                />
+              )}
+            />
           )}
         </>
       ) : null}
+      <Dialog
+        open={editingMobility !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingMobility(null);
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+          <DialogTitle>Movilidad</DialogTitle>
+          <DialogDescription>
+            {editingMobility
+              ? new Date(`${editingMobility.date}T12:00:00`).toLocaleDateString(
+                  'es-ES',
+                  { dateStyle: 'long' },
+                )
+              : ''}
+          </DialogDescription>
+          {editingMobility ? (
+            <fieldset disabled={!editable}>
+              <MobilityRoutine
+                key={editingMobility.id}
+                state={state}
+                updateState={updateState}
+                day={editingMobility.date}
+                initialMode={editingMobility.mode}
+              />
+            </fieldset>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       {editingActivity ? (
         <ActivityHistoryEditor
           key={editingActivity.id}
@@ -317,7 +347,7 @@ export function ProgressView({
               Cancelar
             </Button>
             <Button
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-destructive text-destructive-foreground hover:brightness-95"
               onClick={deleteWorkout}
             >
               <Trash2 /> Borrar

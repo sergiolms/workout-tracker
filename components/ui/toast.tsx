@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Toast as ToastPrimitive } from '@base-ui/react/toast';
 
+import { useOverlayTheme } from './dialog';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,10 +26,12 @@ function ToastPortal({ ...props }: ToastPrimitive.Portal.Props) {
 }
 
 function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
+  const dark = useOverlayTheme();
   return (
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
+        dark && 'dark',
         'pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
         className,
       )}

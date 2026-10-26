@@ -345,7 +345,7 @@ export async function parseHevyCsv(
     )
   )
     warnings.add(
-      'Solo se importan peso y cintura. Base no tiene campos para el resto de medidas.',
+      'Solo se importan peso y cintura. Zero to Hero no tiene campos para el resto de medidas.',
     );
   if (!state.workoutLogs.length && !state.measurements.length)
     failure('no hay registros compatibles.');

@@ -214,7 +214,7 @@ export function SaveStatus({ status }: { status: PersistenceStatus }) {
   return (
     <output
       title={label}
-      className={`save-status ${disconnected ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}
+      className={`save-status ${disconnected ? 'text-[var(--warning)]' : 'text-muted-foreground'}`}
     >
       {disconnected ? (
         <Unplug aria-hidden="true" />

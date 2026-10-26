@@ -42,7 +42,9 @@ export function parseSharedPlan(text: string): SharedPlan {
     !('sessions' in raw) ||
     !('periods' in raw)
   )
-    throw Error('Selecciona un archivo de rutinas exportado desde Base.');
+    throw Error(
+      'Selecciona un archivo de rutinas exportado desde Zero to Hero.',
+    );
   const value = raw as SharedPlan;
   const validated = parseBackup(
     JSON.stringify({

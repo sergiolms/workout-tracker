@@ -93,7 +93,7 @@ export function parseBackup(text: string): AppState {
     !Array.isArray(raw.sessions) ||
     !Array.isArray(raw.exerciseLogs)
   )
-    fail('se esperaba una copia exportada desde Base.');
+    fail('se esperaba una copia exportada desde Zero to Hero.');
   const source = raw as Record<string, unknown>;
   if (
     source.week !== undefined &&

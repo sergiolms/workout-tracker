@@ -1,4 +1,5 @@
 import type { Exercise } from './workout-data';
+import type { HistoryCoverage } from './history-summary';
 import { statusFromLog } from './exercise-sets.ts';
 
 export type SetLog = {
@@ -120,6 +121,7 @@ export type AppState = {
   version: 3;
   updatedAt?: string;
   cloudRevision?: number;
+  history?: HistoryCoverage;
   week: number;
   planName: string;
   periods: PlanPeriod[];
@@ -313,14 +315,13 @@ export function migrateState(raw: unknown): AppState | null {
       .filter((item) => !item.finishedAt)
       .map((item) => item.id),
   );
-  const migratedWorkouts = workoutsFromExerciseLogs(
-    exerciseLogs,
-    sessions,
-    workoutLogs,
-  ).filter(
-    (workout) =>
-      !existingWorkoutIds.has(workout.id) && !activeIds.has(workout.id),
-  );
+  const migratedWorkouts =
+    value.history && !value.history.complete
+      ? []
+      : workoutsFromExerciseLogs(exerciseLogs, sessions, workoutLogs).filter(
+          (workout) =>
+            !existingWorkoutIds.has(workout.id) && !activeIds.has(workout.id),
+        );
   return {
     ...defaultState,
     ...value,

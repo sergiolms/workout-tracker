@@ -1,5 +1,6 @@
 import type { AppState } from './storage';
-import { CloudRepository, type RecordDatabase, type StoredRecord } from './cloud-repository.ts';
+import { type RecordDatabase, type StoredRecord } from './cloud-repository.ts';
+import { PagedCloudRepository } from './paged-cloud-repository.ts';
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,7 +20,9 @@ export type FirebaseUser = {
   isAnonymous: boolean;
 };
 
-export const firebaseConfigured = Boolean(config.apiKey && config.projectId && config.appId);
+export const firebaseConfigured = Boolean(
+  config.apiKey && config.projectId && config.appId,
+);
 
 let servicesPromise: Promise<{
   auth: import('firebase/auth').Auth;
@@ -31,11 +34,12 @@ async function getServices() {
   if (servicesPromise) return servicesPromise;
 
   servicesPromise = (async () => {
-    const [{ initializeApp, getApps }, authSdk, firestoreSdk] = await Promise.all([
-      import('firebase/app'),
-      import('firebase/auth'),
-      import('firebase/firestore'),
-    ]);
+    const [{ initializeApp, getApps }, authSdk, firestoreSdk] =
+      await Promise.all([
+        import('firebase/app'),
+        import('firebase/auth'),
+        import('firebase/firestore'),
+      ]);
     const app = getApps()[0] ?? initializeApp(config);
     const auth = authSdk.getAuth(app);
     await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
@@ -53,42 +57,69 @@ async function getServices() {
     }
 
     if (config.measurementId) {
-      void import('firebase/analytics').then(async ({ getAnalytics, isSupported }) => {
-        if (await isSupported()) getAnalytics(app);
-      }).catch(() => undefined);
+      void import('firebase/analytics')
+        .then(async ({ getAnalytics, isSupported }) => {
+          if (await isSupported()) getAnalytics(app);
+        })
+        .catch(() => undefined);
     }
 
     return { auth, db };
-  })().catch((error) => { servicesPromise = null; throw error; });
+  })().catch((error) => {
+    servicesPromise = null;
+    throw error;
+  });
 
   return servicesPromise;
 }
 
-export async function subscribeToAuth(onChange: (user: FirebaseUser | null) => void) {
+export async function subscribeToAuth(
+  onChange: (user: FirebaseUser | null) => void,
+) {
   if (!firebaseConfigured) {
     onChange(null);
     return () => undefined;
   }
-  const [{ auth }, { onAuthStateChanged }] = await Promise.all([getServices(), import('firebase/auth')]);
-  return onAuthStateChanged(auth, (user) => onChange(user ? {
+  const [{ auth }, { onAuthStateChanged }] = await Promise.all([
+    getServices(),
+    import('firebase/auth'),
+  ]);
+  return onAuthStateChanged(auth, (user) =>
+    onChange(
+      user
+        ? {
+            uid: user.uid,
+            displayName: user.displayName,
+            email: user.email,
+            photoURL: user.photoURL,
+            isAnonymous: user.isAnonymous,
+          }
+        : null,
+    ),
+  );
+}
+
+export async function signInWithGoogle(): Promise<FirebaseUser> {
+  const [{ auth }, { GoogleAuthProvider, signInWithPopup }] = await Promise.all(
+    [getServices(), import('firebase/auth')],
+  );
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const { user } = await signInWithPopup(auth, provider);
+  return {
     uid: user.uid,
     displayName: user.displayName,
     email: user.email,
     photoURL: user.photoURL,
     isAnonymous: user.isAnonymous,
-  } : null));
-}
-
-export async function signInWithGoogle(): Promise<FirebaseUser> {
-  const [{ auth }, { GoogleAuthProvider, signInWithPopup }] = await Promise.all([getServices(), import('firebase/auth')]);
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-  const { user } = await signInWithPopup(auth, provider);
-  return { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL, isAnonymous: user.isAnonymous };
+  };
 }
 
 export async function signOutFirebase() {
-  const [{ auth }, { signOut }] = await Promise.all([getServices(), import('firebase/auth')]);
+  const [{ auth }, { signOut }] = await Promise.all([
+    getServices(),
+    import('firebase/auth'),
+  ]);
   await signOut(auth);
 }
 
@@ -98,21 +129,74 @@ export function firebasePayload(state: AppState): AppState {
 }
 
 export function createFirebaseRepository(expectedUid: string) {
-  return new CloudRepository(firebaseRecordDatabase(expectedUid));
+  return new PagedCloudRepository(firebaseRecordDatabase(expectedUid));
 }
 
-export function firebaseRecordDatabase(expectedUid: string, services = getServices): RecordDatabase {
+export function firebaseRecordDatabase(
+  expectedUid: string,
+  services = getServices,
+): RecordDatabase {
   const checkAccount = (auth: import('firebase/auth').Auth) => {
-    if (!auth.currentUser || auth.currentUser.isAnonymous || auth.currentUser.uid !== expectedUid) throw new Error('La cuenta activa ha cambiado');
+    if (
+      !auth.currentUser ||
+      auth.currentUser.isAnonymous ||
+      auth.currentUser.uid !== expectedUid
+    )
+      throw new Error('La cuenta activa ha cambiado');
   };
   const ready = async () => {
-    const [{ auth, db }, sdk] = await Promise.all([services(), import('firebase/firestore')]);
+    const [{ auth, db }, sdk] = await Promise.all([
+      services(),
+      import('firebase/firestore'),
+    ]);
     checkAccount(auth);
-    const reference = (path: string) => sdk.doc(db, `users/${expectedUid}/${path}`);
+    const reference = (path: string) =>
+      sdk.doc(db, `users/${expectedUid}/${path}`);
     return { auth, db, sdk, reference };
   };
   const database: RecordDatabase = {
-    get: async path => {
+    prefixPage: async (collection, prefix, after) => {
+      const { db, sdk } = await ready();
+      const start = encodeURIComponent(prefix);
+      const constraints = [
+        sdk.orderBy(sdk.documentId()),
+        after ? sdk.startAfter(after) : sdk.startAt(start),
+        sdk.endBefore(`${start}\uf8ff`),
+        sdk.limit(100),
+      ];
+      const snapshot = await sdk.getDocsFromServer(
+        sdk.query(
+          sdk.collection(db, `users/${expectedUid}/${collection}`),
+          ...constraints,
+        ),
+      );
+      return snapshot.docs.map((item) => ({
+        id: item.id,
+        record: item.data() as StoredRecord,
+      }));
+    },
+    historyPage: async (collection, start, end, after) => {
+      const { db, sdk } = await ready();
+      const constraints: import('firebase/firestore').QueryConstraint[] = [
+        sdk.where('historyDate', '>=', start),
+        sdk.where('historyDate', '<', end),
+        sdk.orderBy('historyDate'),
+        sdk.orderBy(sdk.documentId()),
+        sdk.limit(100),
+      ];
+      if (after) constraints.push(sdk.startAfter(after.date, after.id));
+      const snapshot = await sdk.getDocsFromServer(
+        sdk.query(
+          sdk.collection(db, `users/${expectedUid}/${collection}`),
+          ...constraints,
+        ),
+      );
+      return snapshot.docs.map((item) => ({
+        id: item.id,
+        record: item.data() as StoredRecord,
+      }));
+    },
+    get: async (path) => {
       const { sdk, reference } = await ready();
       const snapshot = await sdk.getDocFromServer(reference(path));
       return snapshot.exists() ? snapshot.data() : null;
@@ -120,36 +204,82 @@ export function firebaseRecordDatabase(expectedUid: string, services = getServic
     page: async (collection, after, since) => {
       const { db, sdk } = await ready();
       const constraints: import('firebase/firestore').QueryConstraint[] = [];
-      if (since !== undefined) constraints.push(sdk.where('sequence', '>', since), sdk.orderBy('sequence'));
+      if (since !== undefined)
+        constraints.push(
+          sdk.where('sequence', '>', since),
+          sdk.orderBy('sequence'),
+        );
       constraints.push(sdk.orderBy(sdk.documentId()));
-      if (after) constraints.push(since === undefined ? sdk.startAfter(after.id) : sdk.startAfter(after.sequence, after.id));
+      if (after)
+        constraints.push(
+          since === undefined
+            ? sdk.startAfter(after.id)
+            : sdk.startAfter(after.sequence, after.id),
+        );
       constraints.push(sdk.limit(100));
-      const snapshot = await sdk.getDocsFromServer(sdk.query(sdk.collection(db, `users/${expectedUid}/${collection}`), ...constraints));
-      return snapshot.docs.map(item => ({ id: item.id, record: item.data() as StoredRecord }));
+      const snapshot = await sdk.getDocsFromServer(
+        sdk.query(
+          sdk.collection(db, `users/${expectedUid}/${collection}`),
+          ...constraints,
+        ),
+      );
+      return snapshot.docs.map((item) => ({
+        id: item.id,
+        record: item.data() as StoredRecord,
+      }));
     },
-    batch: async entries => {
+    batch: async (entries) => {
       const { auth, db, sdk, reference } = await ready();
       const batch = sdk.writeBatch(db);
-      for (const entry of entries) batch.set(reference(entry.path), JSON.parse(JSON.stringify(entry.value)));
-      checkAccount(auth); await batch.commit();
+      for (const entry of entries)
+        batch.set(
+          reference(entry.path),
+          JSON.parse(JSON.stringify(entry.value)),
+        );
+      checkAccount(auth);
+      await batch.commit();
     },
-    transaction: async action => {
+    transaction: async (action) => {
       const { auth, db, sdk, reference } = await ready();
-      return sdk.runTransaction(db, async transaction => {
+      return sdk.runTransaction(db, async (transaction) => {
         checkAccount(auth);
-        return action({ get: async path => { const snapshot = await transaction.get(reference(path)); return snapshot.exists() ? snapshot.data() : null; }, set: (path, value) => { checkAccount(auth); transaction.set(reference(path), JSON.parse(JSON.stringify(value))); } });
+        return action({
+          get: async (path) => {
+            const snapshot = await transaction.get(reference(path));
+            return snapshot.exists() ? snapshot.data() : null;
+          },
+          set: (path, value) => {
+            checkAccount(auth);
+            transaction.set(reference(path), JSON.parse(JSON.stringify(value)));
+          },
+        });
       });
     },
     listen: (path, change, error) => {
-      let active = true; let stop: (() => void) | undefined;
-      void ready().then(({ sdk, reference }) => {
-        if (!active) return;
-        stop = sdk.onSnapshot(reference(path), { includeMetadataChanges: true }, snapshot => {
-          // A cached snapshot is useful for reading, never permission to edit.
-          if (!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites) change();
-        }, error);
-      }).catch(error);
-      return () => { active = false; stop?.(); };
+      let active = true;
+      let stop: (() => void) | undefined;
+      void ready()
+        .then(({ sdk, reference }) => {
+          if (!active) return;
+          stop = sdk.onSnapshot(
+            reference(path),
+            { includeMetadataChanges: true },
+            (snapshot) => {
+              // A cached snapshot is useful for reading, never permission to edit.
+              if (
+                !snapshot.metadata.fromCache &&
+                !snapshot.metadata.hasPendingWrites
+              )
+                change();
+            },
+            error,
+          );
+        })
+        .catch(error);
+      return () => {
+        active = false;
+        stop?.();
+      };
     },
   };
   return database;

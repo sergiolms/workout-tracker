@@ -19,20 +19,24 @@ import { localDateKey } from '@/lib/local-date';
 export function MobilityRoutine({
   state,
   updateState,
+  day = localDateKey(),
+  initialMode = 'corta',
 }: {
   state: AppState;
   updateState: (updater: (state: AppState) => AppState) => void;
+  day?: string;
+  initialMode?: 'corta' | 'larga';
 }) {
-  const [mode, setMode] = useState<'corta' | 'larga'>('corta');
+  const [mode, setMode] = useState<'corta' | 'larga'>(initialMode);
   const [selected, setSelected] = useState<string | null>(null);
   const items = mode === 'corta' ? mobility.slice(0, 5) : mobility.slice(5);
-  const keys = items.map(([name]) => `${localDateKey()}:${mode}-${name}`);
+  const keys = items.map(([name]) => `${day}:${mode}-${name}`);
   const completedCount = keys.filter((key) =>
     state.mobilityDone.includes(key),
   ).length;
   const selectedItem = mobility.find(([name]) => name === selected);
   const selectedKey = selected
-    ? `${localDateKey()}:${mobility.slice(0, 5).some(([name]) => name === selected) ? 'corta' : 'larga'}-${selected}`
+    ? `${day}:${mobility.slice(0, 5).some(([name]) => name === selected) ? 'corta' : 'larga'}-${selected}`
     : '';
   const selectedDone = state.mobilityDone.includes(selectedKey);
   const toggleItem = (key: string) =>

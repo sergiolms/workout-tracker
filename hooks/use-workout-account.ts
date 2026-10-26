@@ -25,8 +25,12 @@ import {
 } from '@/lib/storage';
 import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
 import { createWalkLog } from '@/lib/walk-log';
+import type { HistorySource } from '@/lib/history-source';
 
 export function useWorkoutAccount() {
+  const [historySource, setHistorySource] = useState<HistorySource | null>(
+    null,
+  );
   const [accountStore, setAccountStore] = useState<WorkoutPersistence | null>(
     null,
   );
@@ -70,6 +74,7 @@ export function useWorkoutAccount() {
         try {
           setHydrated(false);
           setAccountStore(null);
+          setHistorySource(null);
           setFallbackStatus({
             local: 'saved',
             cloud: 'pending',
@@ -91,12 +96,25 @@ export function useWorkoutAccount() {
             backup: (value, source) =>
               backupLocalState(value, user.uid, source),
             loadCloud: repository.load,
+            loadFullCloud: repository.loadAll,
             saveCloud: repository.save,
             subscribeCloud: repository.subscribe,
             loadPending: () => loadPendingChanges(user.uid),
             savePending: (pending) => savePendingChanges(user.uid, pending),
           });
           persistence.current = store;
+          setHistorySource({
+            loadMonth: (month) =>
+              store.hydrate(() => repository.loadMonth(month)),
+            loadAll: async () => {
+              const full = await store.hydrate(repository.loadAll);
+              if (!full.history?.complete)
+                throw Error(
+                  'Resuelve la sincronización antes de descargar todos los registros.',
+                );
+              return full;
+            },
+          });
           setAccountStore(store);
           await store.initialize();
           if (cancelled || sequence !== loadSequence.current) {
@@ -164,7 +182,8 @@ export function useWorkoutAccount() {
         {
           name: 'log_walk',
           title: 'Registrar caminata',
-          description: 'Registra una caminata con minutos y pasos en Base.',
+          description:
+            'Registra una caminata con minutos y pasos en Zero to Hero.',
           inputSchema: {
             type: 'object',
             properties: {
@@ -244,6 +263,7 @@ export function useWorkoutAccount() {
     [],
   );
   return {
+    historySource,
     state,
     hydrated,
     cloudReady,

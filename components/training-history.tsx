@@ -12,6 +12,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { historyPage } from '@/lib/history-browser';
+import { historyMonths } from '@/lib/history-summary';
+import {
+  HistoryLoading,
+  monthsBetween,
+  useHistoryMonths,
+} from '@/components/history-source';
 import { activityEstimates, formatPace } from '@/lib/activity-estimates';
 import type { AppState, CardioLog, WorkoutLog } from '@/lib/storage';
 import {
@@ -186,14 +192,28 @@ export function HistoryBrowser<T extends { id: string; date: string }>({
   entries,
   searchText,
   renderEntry,
+  state,
 }: {
   title: string;
   entries: T[];
   searchText: (entry: T) => string;
   renderEntry: (entry: T) => ReactNode;
+  state?: AppState;
 }) {
   const [query, setQuery] = useState('');
-  const [month, setMonth] = useState('');
+  const [monthDraft, setMonth] = useState<string | null>(null);
+  const month =
+    monthDraft ??
+    (state?.history && !state.history.complete
+      ? new Date().toISOString().slice(0, 7)
+      : '');
+  const first = month ? new Date(`${month}-01T00:00:00`) : new Date();
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 1);
+  last.setMilliseconds(-1);
+  const status = useHistoryMonths(
+    state,
+    month ? monthsBetween(first, last) : 'all',
+  );
   const [page, setPage] = useState(0);
   const result = useMemo(
     () => historyPage(entries, { query, month, page, searchText }),
@@ -203,11 +223,8 @@ export function HistoryBrowser<T extends { id: string; date: string }>({
     <section className="journal-section mt-4" aria-label={title}>
       <div className="mb-4 flex items-baseline justify-between gap-3">
         <h2 className="font-semibold">{title}</h2>
-        <span className="text-sm tabular-nums text-muted-foreground">
-          {entries.length}
-        </span>
       </div>
-      {entries.length ? (
+      {entries.length || state?.history?.summaries.length ? (
         <>
           <div className="mb-3 flex flex-wrap gap-2">
             <label className="flex min-w-0 flex-[2_1_150px] items-center gap-2 rounded-xl border border-border bg-background px-3">
@@ -233,56 +250,70 @@ export function HistoryBrowser<T extends { id: string; date: string }>({
               }}
             >
               <option value="">Todos los meses</option>
-              {result.months.map((value) => (
-                <option key={value} value={value}>
-                  {new Date(`${value}-15T12:00:00`).toLocaleDateString(
-                    'es-ES',
-                    { month: 'long', year: 'numeric' },
-                  )}
-                </option>
-              ))}
+              {[
+                ...new Set([
+                  ...(state ? historyMonths(state) : []),
+                  ...result.months,
+                  ...(month ? [month] : []),
+                ]),
+              ]
+                .filter((value) => /^\d{4}-\d{2}$/.test(value))
+                .sort()
+                .reverse()
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {new Date(`${value}-15T12:00:00`).toLocaleDateString(
+                      'es-ES',
+                      { month: 'long', year: 'numeric' },
+                    )}
+                  </option>
+                ))}
             </select>
           </div>
-          <div key={`${query}:${month}:${result.page}`} className="space-y-2">
-            {result.entries.map((entry) => (
-              <div key={entry.id}>{renderEntry(entry)}</div>
-            ))}
-          </div>
-          {!result.total ? (
-            <p className="py-4 text-sm text-muted-foreground">
-              No hay registros con esta búsqueda y este mes.
-            </p>
-          ) : null}
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <p aria-live="polite" className="text-xs text-muted-foreground">
-              {result.start}–{result.end} de {result.total}
-            </p>
-            <div className="flex items-center gap-1">
-              <Button
-                aria-label={`Página anterior de ${title.toLowerCase()}`}
-                variant="ghost"
-                className="size-11 rounded-xl"
-                size="icon"
-                disabled={!result.page}
-                onClick={() => setPage(result.page - 1)}
-              >
-                <ChevronLeft />
-              </Button>
-              <span className="text-xs tabular-nums">
-                {result.page + 1}/{result.pages}
-              </span>
-              <Button
-                aria-label={`Página siguiente de ${title.toLowerCase()}`}
-                variant="ghost"
-                className="size-11 rounded-xl"
-                size="icon"
-                disabled={result.page >= result.pages - 1}
-                onClick={() => setPage(result.page + 1)}
-              >
-                <ChevronRight />
-              </Button>
+          <HistoryLoading status={status}>
+            <div key={`${query}:${month}:${result.page}`} className="space-y-2">
+              {result.entries.map((entry) => (
+                <div key={entry.id}>{renderEntry(entry)}</div>
+              ))}
             </div>
-          </div>
+            {!result.total ? (
+              <p className="py-4 text-sm text-muted-foreground">
+                No hay registros con esta búsqueda y este mes.
+              </p>
+            ) : null}
+            {result.pages > 1 ? (
+              <div className="mt-4 flex items-center justify-between gap-2">
+                <p aria-live="polite" className="text-xs text-muted-foreground">
+                  {result.start}–{result.end} de {result.total}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    aria-label={`Página anterior de ${title.toLowerCase()}`}
+                    variant="ghost"
+                    className="size-11 rounded-xl"
+                    size="icon"
+                    disabled={!result.page}
+                    onClick={() => setPage(result.page - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <span className="text-xs tabular-nums">
+                    {result.page + 1}/{result.pages}
+                  </span>
+                  <Button
+                    aria-label={`Página siguiente de ${title.toLowerCase()}`}
+                    variant="ghost"
+                    className="size-11 rounded-xl"
+                    size="icon"
+                    disabled={result.page >= result.pages - 1}
+                    onClick={() => setPage(result.page + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </HistoryLoading>
         </>
       ) : (
         <p className="py-3 text-sm text-muted-foreground">

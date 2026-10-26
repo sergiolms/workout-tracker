@@ -35,7 +35,7 @@ export function PlanSharing({
     );
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'base-rutinas.json';
+    link.download = 'zero-to-hero-rutinas.json';
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -99,7 +99,7 @@ export function PlanSharing({
           <section className="mt-4 min-w-0 border-t border-border pt-4">
             <h3 className="mb-3 font-semibold">Importar rutinas compartidas</h3>
             <label className="block text-sm">
-              Archivo de Base
+              Archivo de Zero to Hero
               <input
                 type="file"
                 accept="application/json,.json"

@@ -9,6 +9,7 @@ import { SessionBuilder } from '@/components/plan/session-builder';
 import { LiquidNavigation } from '@/components/liquid-navigation';
 import { navItems } from '@/components/navigation-items';
 import { appendCatalogExercises } from '@/lib/session-exercises';
+import { localDateKey } from '@/lib/local-date';
 import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-editor';
 import { ExerciseHistoryPicker } from '@/components/exercises/exercise-history-picker';
 import { exerciseCatalog } from '@/lib/exercise-catalog';
@@ -70,6 +71,10 @@ function fixture(): AppState {
   });
   return {
     ...defaultState,
+    mobilityDone: [
+      `${localDateKey()}:corta-Open book`,
+      `${localDateKey()}:corta-Wall slides`,
+    ],
     periods,
     plan: weeksFromPeriods(periods),
     sessions: [{ id: 'r', name: 'Demostración', exercises: [exercise] }],
@@ -235,7 +240,10 @@ export const EditorConMuchosEjercicios: Story = {
       exercises: appendCatalogExercises([], exerciseCatalog.slice(0, 12)),
     });
     return (
-      <div className="app-shell bg-background text-foreground">
+      <div
+        className="app-shell bg-background text-foreground"
+        style={{ height: 'calc(100dvh - 40px)' }}
+      >
         <main className="app-content">
           <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5">
             <header className="app-header">

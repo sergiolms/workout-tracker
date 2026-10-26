@@ -68,6 +68,9 @@ export function exerciseHistory(
 export function loggedExercises(state: AppState) {
   const templates = state.sessions.flatMap((session) => session.exercises);
   const entries = new Map<string, HistoryExercise>();
+  for (const month of state.history?.summaries ?? [])
+    for (const reference of Object.values(month.exercises))
+      entries.set(historyExerciseKey(reference), reference);
   for (const log of state.exerciseLogs.toSorted((a, b) =>
     a.date.localeCompare(b.date),
   )) {

@@ -1,6 +1,7 @@
 'use client';
 import { HeartPulse } from 'lucide-react';
 import { navItems, type Tab } from '@/components/navigation-items';
+import { HistoryProvider } from '@/components/history-source';
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DialogThemeProvider } from '@/components/ui/dialog';
@@ -22,6 +23,7 @@ import { useInteractionFeedback } from '@/hooks/use-interaction-feedback';
 import { useWorkoutAccount } from '@/hooks/use-workout-account';
 import { useAppUpdates } from '@/hooks/use-app-updates';
 import { useSystemTheme } from '@/hooks/use-system-theme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { WorkoutTimer } from '@/components/views/timer-view';
 import { ViewBoundary } from '@/components/view-boundary';
 import { nextRotationRoutine } from '@/lib/rotation';
@@ -49,6 +51,7 @@ const ProfileView = lazy(() =>
 
 export default function HomePage() {
   const {
+    historySource,
     state,
     hydrated,
     cloudReady,
@@ -63,6 +66,9 @@ export default function HomePage() {
   } = useWorkoutAccount();
   const [tab, setTab] = useState<Tab>('today');
   const systemDark = useSystemTheme();
+  const isDark =
+    state.theme === 'dark' || (state.theme === 'system' && systemDark);
+  useThemeColor(isDark);
   const [preferredRoutine, setPreferredRoutine] = useState('');
   const [trainingNotice, setTrainingNotice] = useState('');
   const updateAvailable = useAppUpdates();
@@ -136,7 +142,7 @@ export default function HomePage() {
       : countsTowardPlan(workout)
         ? nextPlanSession(
             state.plan,
-            updatedWorkouts,
+            { ...state, workoutLogs: updatedWorkouts },
             workout.week,
             workout.routine,
           )
@@ -239,7 +245,7 @@ export default function HomePage() {
           <span className="mb-5 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground">
             <HeartPulse className="size-7" strokeWidth={2.4} />
           </span>
-          <p className="eyebrow">Base</p>
+          <p className="eyebrow">Zero to Hero</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
             Inicia sesión para continuar
           </h1>
@@ -274,171 +280,172 @@ export default function HomePage() {
       </main>
     );
 
-  const isDark =
-    state.theme === 'dark' || (state.theme === 'system' && systemDark);
-
   return (
-    <DialogThemeProvider value={isDark}>
-      <div className={isDark ? 'dark' : ''}>
-        <div
-          className="app-shell bg-background text-foreground"
-          data-rest-active={restDeadline !== null}
-        >
-          <a
-            href="#view-content"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3"
+    <HistoryProvider value={historySource}>
+      <DialogThemeProvider value={isDark}>
+        <div className={isDark ? 'dark' : ''}>
+          <div
+            className="app-shell bg-background text-foreground"
+            data-rest-active={restDeadline !== null}
           >
-            Saltar al contenido
-          </a>
-          <main
-            id="app-content"
-            tabIndex={-1}
-            ref={contentScroll}
-            className="app-content"
-            {...swipeHandlers}
-          >
-            <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
-              <header className="app-header">
-                <button
-                  className="app-brand"
-                  aria-label="BASE · ir a Hoy"
-                  onClick={() => setTab('today')}
-                  type="button"
-                >
-                  <span className="app-brand-mark">
-                    <HeartPulse className="size-7" strokeWidth={2.4} />
-                  </span>
-                  BASE
-                </button>
-                <div className="flex items-center gap-2">
-                  <SaveStatus status={persistenceStatus} />
-                </div>
-              </header>
-              <div id="view-content" tabIndex={-1}>
-                <MotionSurface
-                  className="mx-auto max-w-[760px]"
-                  motionKey={tab}
-                  direction={viewDirection}
-                >
-                  {updateAvailable ? (
-                    <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
-                      <span className="text-sm font-medium">
-                        Nueva versión disponible
-                      </span>
-                      <Button
-                        className="min-h-10 shrink-0 rounded-lg"
-                        onClick={() => window.location.reload()}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Actualizar
-                      </Button>
-                    </output>
-                  ) : null}
-                  {tab === 'timers' ? (
-                    <div className="section-heading">
-                      <div>
-                        <h1 className="page-title">Timer</h1>
-                        <p className="page-subtitle">
-                          Tu ritmo, sin distracciones
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className={tab === 'timers' ? '' : 'hidden'}>
-                    <WorkoutTimer />
+            <a
+              href="#view-content"
+              className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3"
+            >
+              Saltar al contenido
+            </a>
+            <main
+              id="app-content"
+              tabIndex={-1}
+              ref={contentScroll}
+              className="app-content"
+              {...swipeHandlers}
+            >
+              <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
+                <header className="app-header">
+                  <button
+                    className="app-brand"
+                    aria-label="Zero to Hero · ir a Hoy"
+                    onClick={() => setTab('today')}
+                    type="button"
+                  >
+                    <span className="app-brand-mark">
+                      <HeartPulse className="size-7" strokeWidth={2.4} />
+                    </span>
+                    <span className="brand-name">
+                      Zero <span className="brand-connector">to</span> Hero
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <SaveStatus status={persistenceStatus} />
                   </div>
-                  {persistenceStatus.conflicts?.length ? (
-                    <SyncConflicts
-                      key={JSON.stringify(persistenceStatus.conflicts)}
-                      state={state}
-                      conflicts={persistenceStatus.conflicts}
-                      onResolve={resolveConflicts}
-                    />
-                  ) : persistenceStatus.error ? (
-                    <p
-                      role="alert"
-                      className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
-                    >
-                      {persistenceStatus.local === 'error'
-                        ? 'No se ha podido guardar en este dispositivo.'
-                        : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'}{' '}
-                      <span className="block text-xs">
-                        {persistenceStatus.error}
-                      </span>
-                    </p>
-                  ) : null}
-                  {!persistenceStatus.canEdit && !persistenceStatus.error ? (
-                    <output className="mb-4 block text-sm text-muted-foreground">
-                      Conectando con Firebase. La copia local se muestra en modo
-                      lectura.
-                    </output>
-                  ) : null}
-                  <ViewBoundary key={tab}>
-                    <Suspense
-                      fallback={
-                        <output className="block py-6 text-sm text-muted-foreground">
-                          Cargando vista…
-                        </output>
-                      }
-                    >
-                      <fieldset
-                        disabled={
-                          !persistenceStatus.canEdit && tab !== 'profile'
-                        }
-                        className="min-w-0"
+                </header>
+                <div id="view-content" tabIndex={-1}>
+                  <MotionSurface
+                    className="mx-auto max-w-[760px]"
+                    motionKey={tab}
+                    direction={viewDirection}
+                  >
+                    {updateAvailable ? (
+                      <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+                        <span className="text-sm font-medium">
+                          Nueva versión disponible
+                        </span>
+                        <Button
+                          className="min-h-10 shrink-0 rounded-lg"
+                          onClick={() => window.location.reload()}
+                          size="sm"
+                          variant="outline"
+                        >
+                          Actualizar
+                        </Button>
+                      </output>
+                    ) : null}
+                    {tab === 'timers' ? (
+                      <div className="section-heading">
+                        <div>
+                          <h1 className="page-title">Timer</h1>
+                          <p className="page-subtitle">
+                            Tu ritmo, sin distracciones
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className={tab === 'timers' ? '' : 'hidden'}>
+                      <WorkoutTimer />
+                    </div>
+                    {persistenceStatus.conflicts?.length ? (
+                      <SyncConflicts
+                        key={JSON.stringify(persistenceStatus.conflicts)}
+                        state={state}
+                        conflicts={persistenceStatus.conflicts}
+                        onResolve={resolveConflicts}
+                      />
+                    ) : persistenceStatus.error ? (
+                      <p
+                        role="alert"
+                        className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
                       >
-                        {tab === 'timers' ? null : tab === 'profile' ? (
-                          <ProfileView
-                            editable={persistenceStatus.canEdit}
-                            authBusy={authBusy}
-                            authError={authError}
-                            cloudReady={cloudReady}
-                            onGoogleLogin={handleGoogleLogin}
-                            onLogout={handleLogout}
-                            state={state}
-                            updateState={updateState}
-                            user={firebaseUser}
-                          />
-                        ) : (
-                          content
-                        )}
-                      </fieldset>
-                    </Suspense>
-                  </ViewBoundary>
-                </MotionSurface>
+                        {persistenceStatus.local === 'error'
+                          ? 'No se ha podido guardar en este dispositivo.'
+                          : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'}{' '}
+                        <span className="block text-xs">
+                          {persistenceStatus.error}
+                        </span>
+                      </p>
+                    ) : null}
+                    {!persistenceStatus.canEdit && !persistenceStatus.error ? (
+                      <output className="mb-4 block text-sm text-muted-foreground">
+                        Conectando con Firebase. La copia local se muestra en
+                        modo lectura.
+                      </output>
+                    ) : null}
+                    <ViewBoundary key={tab}>
+                      <Suspense
+                        fallback={
+                          <output className="block py-6 text-sm text-muted-foreground">
+                            Cargando vista…
+                          </output>
+                        }
+                      >
+                        <fieldset
+                          disabled={
+                            !persistenceStatus.canEdit && tab !== 'profile'
+                          }
+                          className="min-w-0"
+                        >
+                          {tab === 'timers' ? null : tab === 'profile' ? (
+                            <ProfileView
+                              editable={persistenceStatus.canEdit}
+                              authBusy={authBusy}
+                              authError={authError}
+                              cloudReady={cloudReady}
+                              onGoogleLogin={handleGoogleLogin}
+                              onLogout={handleLogout}
+                              state={state}
+                              updateState={updateState}
+                              user={firebaseUser}
+                            />
+                          ) : (
+                            content
+                          )}
+                        </fieldset>
+                      </Suspense>
+                    </ViewBoundary>
+                  </MotionSurface>
+                </div>
               </div>
-            </div>
-          </main>
-          {undo ? (
-            <UndoNotice
-              key={undo.id}
-              message={undo.message}
-              onDismiss={dismissUndo}
-              onUndo={() => {
-                if (persistenceStatus.canEdit) undo.action();
-              }}
-            />
-          ) : null}
-
-          {restDeadline !== null ? (
-            <RestDock
-              key={restDeadline}
-              deadline={restDeadline}
-              onDismiss={stopRest}
-            />
-          ) : null}
-          <div className="bottom-nav">
-            <div className="mx-auto max-w-[680px]">
-              <LiquidNavigation
-                items={navItems}
-                active={tab}
-                onSelect={selectView}
+            </main>
+            {undo ? (
+              <UndoNotice
+                key={undo.id}
+                message={undo.message}
+                onDismiss={dismissUndo}
+                onUndo={() => {
+                  if (persistenceStatus.canEdit) undo.action();
+                }}
               />
+            ) : null}
+
+            {restDeadline !== null ? (
+              <RestDock
+                key={restDeadline}
+                deadline={restDeadline}
+                onDismiss={stopRest}
+              />
+            ) : null}
+            <div className="bottom-nav">
+              <div className="mx-auto max-w-[680px]">
+                <LiquidNavigation
+                  items={navItems}
+                  active={tab}
+                  onSelect={selectView}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </DialogThemeProvider>
+      </DialogThemeProvider>
+    </HistoryProvider>
   );
 }

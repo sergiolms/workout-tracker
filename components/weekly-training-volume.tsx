@@ -9,11 +9,17 @@ import {
 import { bodyPartOptions } from '@/lib/catalog-filters';
 import type { AppState } from '@/lib/storage';
 import { exerciseIdentity } from '@/lib/exercise-identity';
+import {
+  HistoryLoading,
+  monthsBetween,
+  useHistoryMonths,
+} from '@/components/history-source';
 
 export function WeeklyTrainingVolume({ state }: { state: AppState }) {
   const [offset, setOffset] = useState(0);
   const [today] = useState(() => new Date());
   const { start, end } = weekInterval(today, offset);
+  const status = useHistoryMonths(state, monthsBetween(start, end));
   const startTime = start.getTime(),
     endTime = Math.min(end.getTime(), today.getTime() + 1);
   const templates = state.sessions.flatMap((session) => session.exercises);
@@ -71,43 +77,45 @@ export function WeeklyTrainingVolume({ state }: { state: AppState }) {
           </Button>
         </div>
       </div>
-      <p className="my-3 text-sm text-muted-foreground">
-        {summary.total} series de trabajo realizadas. Cada serie cuenta una vez
-        en la zona principal del catálogo; las aproximaciones no cuentan.
-      </p>
-      {summary.groups.length ? (
-        <ul>
-          {summary.groups.map(([name, count]) => (
-            <li
-              key={name}
-              className="flex justify-between gap-3 border-b border-border py-3 text-sm"
-            >
-              <span>{name}</span>
-              <strong className="tabular-nums">{count}</strong>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="py-4 text-sm text-muted-foreground">
-          No hay series finalizadas en esta semana.
+      <HistoryLoading status={status}>
+        <p className="my-3 text-sm text-muted-foreground">
+          {summary.total} series de trabajo realizadas. Cada serie cuenta una
+          vez en la zona principal del catálogo; las aproximaciones no cuentan.
         </p>
-      )}
-      <details className="mt-3">
-        <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">
-          Ver por ejercicio
-        </summary>
-        <ul>
-          {summary.exercises.map((exercise) => (
-            <li
-              key={exercise.id}
-              className="flex justify-between gap-3 py-2 text-sm"
-            >
-              <span>{getExerciseDisplayName(exercise.name)}</span>
-              <span>{exercise.sets}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
+        {summary.groups.length ? (
+          <ul>
+            {summary.groups.map(([name, count]) => (
+              <li
+                key={name}
+                className="flex justify-between gap-3 border-b border-border py-3 text-sm"
+              >
+                <span>{name}</span>
+                <strong className="tabular-nums">{count}</strong>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-4 text-sm text-muted-foreground">
+            No hay series finalizadas en esta semana.
+          </p>
+        )}
+        <details className="mt-3">
+          <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">
+            Ver por ejercicio
+          </summary>
+          <ul>
+            {summary.exercises.map((exercise) => (
+              <li
+                key={exercise.id}
+                className="flex justify-between gap-3 py-2 text-sm"
+              >
+                <span>{getExerciseDisplayName(exercise.name)}</span>
+                <span>{exercise.sets}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </HistoryLoading>
     </section>
   );
 }

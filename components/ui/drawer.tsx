@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { Drawer as DrawerPrimitive } from '@base-ui/react/drawer';
 
+import { useOverlayTheme } from './dialog';
 import { cn } from '@/lib/utils';
 
 type DrawerContextProps = {
@@ -106,6 +107,7 @@ function DrawerContent({
   const swipeAxis =
     swipeDirection === 'down' || swipeDirection === 'up' ? 'y' : 'x';
 
+  const dark = useOverlayTheme();
   return (
     <DrawerPortal data-slot="drawer-portal">
       {modal === true && (
@@ -121,6 +123,7 @@ function DrawerContent({
           data-swipe-axis={swipeAxis}
           data-snap-points={hasSnapPoints ? '' : undefined}
           className={cn(
+            dark && 'dark',
             // Base.
             'bg-popover text-popover-foreground text-sm data-[swipe-direction=down]:rounded-t-xl data-[swipe-direction=down]:border-t data-[swipe-direction=left]:rounded-r-xl data-[swipe-direction=left]:border-r data-[swipe-direction=right]:rounded-l-xl data-[swipe-direction=right]:border-l data-[swipe-direction=up]:rounded-b-xl data-[swipe-direction=up]:border-b group/drawer-popup pointer-events-auto fixed z-50 m-(--drawer-inset,0px) flex h-(--drawer-content-height) max-h-(--drawer-content-max-height,none) min-h-0 w-(--drawer-content-width,auto) transform-[translate3d(var(--translate-x,0px),var(--translate-y,0px),0)_scale(var(--stack-scale))] flex-col transition-[transform,height,opacity,filter] duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform outline-none select-none [interpolate-size:allow-keywords]',
             // Nested.

@@ -20,6 +20,7 @@ import { PreferenceSwitch } from '@/components/preference-switch';
 import { HapticCheck } from '@/components/haptic-check';
 import { localDateKey } from '@/lib/local-date';
 import { RecordTrash } from '@/components/record-trash';
+import { useHistorySource } from '@/components/history-source';
 
 export function ProfileView({
   editable,
@@ -43,15 +44,33 @@ export function ProfileView({
   onLogout: () => void;
 }) {
   const [view, setView] = useState<'account' | 'appearance'>('account');
-  const exportBackup = () => {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }),
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `base-backup-${localDateKey()}.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const historySource = useHistorySource();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exportBackup = async () => {
+    setExporting(true);
+    setExportError('');
+    try {
+      const full = (await historySource?.loadAll()) ?? state;
+      const copy = { ...full };
+      delete copy.history;
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(copy, null, 2)], { type: 'application/json' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `zero-to-hero-backup-${localDateKey()}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo descargar la cuenta completa.',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
   return (
     <div className="profile-settings">
@@ -223,10 +242,17 @@ export function ProfileView({
             <Button
               className="mt-4 min-h-12 rounded-xl"
               onClick={exportBackup}
+              disabled={exporting}
               variant="outline"
             >
-              <Download /> Descargar copia de seguridad
+              <Download />{' '}
+              {exporting ? 'Preparando copia…' : 'Descargar copia de seguridad'}
             </Button>
+            {exportError ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                {exportError}
+              </p>
+            ) : null}
             <BackupImporter
               state={state}
               editable={editable}
