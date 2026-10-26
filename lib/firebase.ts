@@ -1,4 +1,14 @@
 import type { AppState } from './storage';
+import { getApps, initializeApp } from 'firebase/app';
+import {
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import { type RecordDatabase, type StoredRecord } from './cloud-repository.ts';
 import { PagedCloudRepository } from './paged-cloud-repository.ts';
 
@@ -29,20 +39,30 @@ let servicesPromise: Promise<{
   db: import('firebase/firestore').Firestore;
 }> | null = null;
 
+// Keep the popup SDK in the initial bundle. Loading chunks after a tap can lose Safari's user
+// activation and cause the installed app to reject the popup.
+function getFirebaseAuth() {
+  if (!firebaseConfigured) throw new Error('Firebase no está configurado');
+  const app = getApps()[0] ?? initializeApp(config);
+  return getAuth(app);
+}
+
+export async function prepareGoogleSignIn() {
+  if (!firebaseConfigured) return;
+  // Safari/mobile proactively loads Firebase's auth iframe during initialization.
+  // Warm just Auth before the tap, without opening a cloud diary or Firestore.
+  await getFirebaseAuth().authStateReady();
+}
+
 async function getServices() {
   if (!firebaseConfigured) throw new Error('Firebase no está configurado');
   if (servicesPromise) return servicesPromise;
 
   servicesPromise = (async () => {
-    const [{ initializeApp, getApps }, authSdk, firestoreSdk] =
-      await Promise.all([
-        import('firebase/app'),
-        import('firebase/auth'),
-        import('firebase/firestore'),
-      ]);
-    const app = getApps()[0] ?? initializeApp(config);
-    const auth = authSdk.getAuth(app);
-    await authSdk.setPersistence(auth, authSdk.browserLocalPersistence);
+    const firestoreSdk = await import('firebase/firestore');
+    const auth = getFirebaseAuth();
+    const app = auth.app;
+    await setPersistence(auth, browserLocalPersistence);
 
     let db;
     try {
@@ -80,10 +100,7 @@ export async function subscribeToAuth(
     onChange(null);
     return () => undefined;
   }
-  const [{ auth }, { onAuthStateChanged }] = await Promise.all([
-    getServices(),
-    import('firebase/auth'),
-  ]);
+  const { auth } = await getServices();
   return onAuthStateChanged(auth, (user) =>
     onChange(
       user
@@ -100,9 +117,9 @@ export async function subscribeToAuth(
 }
 
 export async function signInWithGoogle(): Promise<FirebaseUser> {
-  const [{ auth }, { GoogleAuthProvider, signInWithPopup }] = await Promise.all(
-    [getServices(), import('firebase/auth')],
-  );
+  // getAuth already defaults to persistent browser storage. Do not wait for
+  // Firestore, analytics, setPersistence or dynamic imports before opening.
+  const auth = getFirebaseAuth();
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   const { user } = await signInWithPopup(auth, provider);
@@ -116,10 +133,7 @@ export async function signInWithGoogle(): Promise<FirebaseUser> {
 }
 
 export async function signOutFirebase() {
-  const [{ auth }, { signOut }] = await Promise.all([
-    getServices(),
-    import('firebase/auth'),
-  ]);
+  const { auth } = await getServices();
   await signOut(auth);
 }
 

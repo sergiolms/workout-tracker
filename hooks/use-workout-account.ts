@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { skipToken, useIsMutating, useQuery } from '@tanstack/react-query';
 import { createAccountQueryClient } from '@/lib/account-query';
 import {
+  prepareGoogleSignIn,
   signInWithGoogle,
   signOutFirebase,
   subscribeToAuth,
@@ -101,6 +102,8 @@ export function useWorkoutAccount() {
 
   useEffect(() => {
     client.mount();
+    // Restore Auth warmup without subscribing local mode to a cloud account.
+    void prepareGoogleSignIn().catch(() => undefined);
     let active = true;
     const readMode = async () => {
       await Promise.resolve();
@@ -233,12 +236,17 @@ export function useWorkoutAccount() {
     }
   };
   const handleGoogleLogin = async () => {
+    if (loginInProgress.current) return;
     setAuthBusy(true);
     setAuthError('');
     loginInProgress.current = true;
     try {
-      await sessionRef.current?.flushLocal();
-      const user = await signInWithGoogle();
+      // Start the popup in the click handler, before waiting for IndexedDB.
+      // Wait for both operations before switching away from the local diary.
+      const [user] = await Promise.all([
+        signInWithGoogle(),
+        sessionRef.current?.flushLocal(),
+      ]);
       const local =
         mode === 'local' && sessionRef.current?.accountId === LOCAL_ACCOUNT_ID
           ? sessionRef.current.state
@@ -253,9 +261,11 @@ export function useWorkoutAccount() {
           ? String(error.code)
           : '';
       setAuthError(
-        code.includes('popup-closed')
-          ? 'Se cerró la ventana antes de completar el acceso.'
-          : 'No se pudo conectar la cuenta. Inténtalo de nuevo.',
+        code === 'auth/popup-blocked'
+          ? 'El navegador ha bloqueado la ventana de Google. Permite las ventanas emergentes y vuelve a pulsar «Sincronizar con una cuenta».'
+          : code.includes('popup-closed')
+            ? 'Se cerró la ventana antes de completar el acceso.'
+            : 'No se pudo conectar la cuenta. Inténtalo de nuevo.',
       );
     } finally {
       loginInProgress.current = false;

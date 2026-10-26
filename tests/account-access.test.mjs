@@ -33,6 +33,8 @@ test('the React account flow supports local access, reload, explicit cloud impor
   const cloud = new Map();
   let authListener;
   let authCalls = 0;
+  let signInCalls = 0;
+  let loginError;
   let writes = 0;
   const user = {
     uid: 'cloud-user',
@@ -50,7 +52,11 @@ test('the React account flow supports local access, reload, explicit cloud impor
         authListener = null;
       };
     },
-    signIn: async () => user,
+    signIn: async () => {
+      signInCalls++;
+      if (loginError) throw loginError;
+      return user;
+    },
     signOut: async () => {
       authListener?.(null);
     },
@@ -94,6 +100,7 @@ test('the React account flow supports local access, reload, explicit cloud impor
           if (id === '\0account-test-firebase')
             return `
           export const subscribeToAuth = async (callback) => globalThis.__accountTestFirebase.subscribe(callback);
+          export const prepareGoogleSignIn = async () => {};
           export const signInWithGoogle = () => globalThis.__accountTestFirebase.signIn();
           export const signOutFirebase = () => globalThis.__accountTestFirebase.signOut();
           export const createFirebaseRepository = (uid) => globalThis.__accountTestFirebase.repository(uid);
@@ -185,7 +192,7 @@ test('the React account flow supports local access, reload, explicit cloud impor
     assert.equal(
       authCalls,
       0,
-      'local-first access must not initialize Firebase',
+      'local access must not subscribe to cloud authentication',
     );
     await act(async () => document.querySelector('button').click());
     await settle(
@@ -220,8 +227,26 @@ test('the React account flow supports local access, reload, explicit cloud impor
     assert.equal(account.mode, 'local');
     assert.equal(account.state.planName, 'Local plan');
     assert.equal(authCalls, 0);
-    const staleLocalUpdate = account.updateState;
+    loginError = { code: 'auth/popup-blocked' };
     await act(async () => account.handleGoogleLogin());
+    assert.equal(account.mode, 'local');
+    assert.equal(account.authBusy, false);
+    assert.match(account.authError, /bloqueado/);
+    assert.equal(account.state.planName, 'Local plan');
+    loginError = undefined;
+    const staleLocalUpdate = account.updateState;
+    await act(async () => {
+      const callsBefore = signInCalls;
+      const login = account.handleGoogleLogin();
+      assert.equal(
+        signInCalls,
+        callsBefore + 1,
+        'Google login must start synchronously, before waiting for local storage',
+      );
+      const duplicate = account.handleGoogleLogin();
+      assert.equal(signInCalls, callsBefore + 1, 'ignore repeated login taps');
+      await Promise.all([login, duplicate]);
+    });
     await settle(
       () =>
         account.mode === 'cloud' &&
