@@ -1,6 +1,7 @@
 import type { AppState, ExerciseLog, WorkoutExerciseStatus, WorkoutLog } from './storage';
 import { statusFromLog } from './exercise-sets.ts';
 import { exerciseSuggestion } from './exercise-log.ts';
+import { exerciseLogMetadata } from './exercise-identity.ts';
 export { statusFromLog } from './exercise-sets.ts';
 
 export type WorkoutExerciseEdit = { log: ExerciseLog; dirty: boolean; originalStatus: WorkoutExerciseStatus; hasLog: boolean };
@@ -18,7 +19,8 @@ export function createWorkoutEdits(state: AppState, workout: WorkoutLog, makeId:
     const log: ExerciseLog = saved ? { ...saved, sets: saved.sets.map((set) => ({ ...set })) } : {
       id: makeId(), date: workout.date, week: workout.week, routine: workout.routine, workoutId: workout.id,
       exercise: item.name, load: 0,
-      sets: Array.from({ length: template?.sets ?? 3 }, () => ({ reps: template?.maxReps ?? 0, done: item.status === 'done' })),
+      ...(template ? exerciseLogMetadata(template) : {}),
+      sets: Array.from({ length: template?.sets ?? 3 }, () => ({ reps: template?.mode === 'time' ? 0 : template?.maxReps ?? 0, ...(template?.mode === 'time' ? { seconds: template.targetSeconds ?? 30 } : {}), done: item.status === 'done' })),
       rir: 2, pain: 0, note: '', skipped: item.status === 'skipped', suggestion: 'mantener',
     };
     return { log, dirty: false, originalStatus: item.status, hasLog: Boolean(saved) };

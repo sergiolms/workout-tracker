@@ -38,6 +38,7 @@ import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { ProgressRing } from '@/components/progress-ring';
 import { ExerciseProgress } from '@/components/exercise-history';
 import { WeeklyTrainingVolume } from '@/components/weekly-training-volume';
+import { PastWorkoutRecorder } from '@/components/past-workout-recorder';
 
 export function ProgressView({
   editable,
@@ -197,7 +198,7 @@ export function ProgressView({
             ]}
           />
           {historyKind === 'workouts' ? (
-            <HistoryBrowser
+            <><PastWorkoutRecorder state={state} editable={editable} updateState={updateState} /><HistoryBrowser
               title="Historial de entrenamientos"
               entries={state.workoutLogs}
               searchText={(log) =>
@@ -214,7 +215,7 @@ export function ProgressView({
                   onDelete={() => setDeletingWorkout(workout)}
                 />
               )}
-            />
+            /></>
           ) : (
             <HistoryBrowser
               title="Actividad registrada"
