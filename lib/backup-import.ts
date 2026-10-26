@@ -35,6 +35,13 @@ const date = (value: unknown) => {
 const string = (value: unknown) =>
   typeof value === 'string' && value.length <= 10000;
 
+function validateExerciseMetadata(value: Record<string, unknown>) {
+  if (value.mode !== undefined && (typeof value.mode !== 'string' || !['reps', 'time'].includes(value.mode))) fail('modalidad de ejercicio incorrecta.');
+  if (value.loadKind !== undefined && (typeof value.loadKind !== 'string' || !['total', 'perHand', 'added', 'assistance', 'none'].includes(value.loadKind))) fail('criterio de carga incorrecto.');
+  if (value.targetSeconds !== undefined && !number(value.targetSeconds, 1, 86400)) fail('tiempo objetivo incorrecto.');
+  for (const key of ['exerciseId', 'unit', 'catalogId']) { const field = value[key]; if (field !== undefined && (typeof field !== 'string' || field.length > 500)) fail('identidad de ejercicio incorrecta.'); }
+}
+
 export function parseBackup(text: string): AppState {
   if (text.length > 20_000_000) fail('el archivo supera 20 MB.');
   let raw: unknown;
@@ -115,6 +122,7 @@ export function parseBackup(text: string): AppState {
             !number(exercise.increment, 0.001)
           )
             fail('objetivo de ejercicio incorrecto.');
+          validateExerciseMetadata(exercise as Record<string, unknown>);
         }
       }
       if (
@@ -126,6 +134,7 @@ export function parseBackup(text: string): AppState {
       )
         fail('tramo incorrecto.');
       if (key === 'exerciseLogs') {
+        validateExerciseMetadata(item);
         if (
           !string(item.exercise) ||
           !string(item.routine) ||
@@ -145,6 +154,11 @@ export function parseBackup(text: string): AppState {
             !Number.isInteger(set.reps) ||
             typeof set.done !== 'boolean' ||
             (set.load !== undefined && !number(set.load)) ||
+            (set.seconds !== undefined && !number(set.seconds, 0, 86400)) ||
+            (set.distanceKm !== undefined && !number(set.distanceKm)) ||
+            (set.rpe !== undefined && !number(set.rpe, 0, 10)) ||
+            (set.sourceType !== undefined && !string(set.sourceType)) ||
+            (set.supersetId !== undefined && !string(set.supersetId)) ||
             (set.kind !== undefined &&
               set.kind !== 'work' &&
               set.kind !== 'warmup')

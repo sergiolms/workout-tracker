@@ -2,6 +2,9 @@ export type RoutineId = 'A1' | 'B1' | 'A2' | 'B2' | 'C1' | 'A3' | 'B3' | 'C2';
 
 export type Exercise = {
   id?: string;
+  mode?: 'reps' | 'time';
+  targetSeconds?: number;
+  loadKind?: 'total' | 'perHand' | 'added' | 'assistance' | 'none';
   name: string;
   target: string;
   sets: number;

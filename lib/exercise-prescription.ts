@@ -21,9 +21,9 @@ export function withExercisePrescription(exercise: Exercise, changes: Partial<Pr
     if (next.minRir > next.maxRir) { if (changes.maxRir !== undefined && changes.minRir === undefined) next.minRir = next.maxRir; else next.maxRir = next.minRir; }
   }
   const range = (min: number, max: number) => min === max ? String(min) : `${min}–${max}`;
-  const unit = exercise.target.split('·')[0].match(/\d\s*(m|s|seg|min)\s*$/i)?.[1];
+  const unit = exercise.mode ? undefined : exercise.target.split('·')[0].match(/\d\s*(m|s|seg|min)\s*$/i)?.[1];
   const note = exercise.target.split('·').slice(1).map(text => text.trim()).filter(text => text && !/^RIR\b/i.test(text)).join(' · ');
-  const target = `${next.sets}×${range(next.minReps, next.maxReps)}${unit ? ` ${unit}` : ''}${next.minRir !== null ? ` · RIR ${range(next.minRir, next.maxRir ?? next.minRir)}` : note ? ` · ${note}` : ''}`;
+  const target = exercise.mode === 'time' ? `${next.sets}×${exercise.targetSeconds ?? 30} s` : `${next.sets}×${range(next.minReps, next.maxReps)}${unit ? ` ${unit}` : ''}${next.minRir !== null ? ` · RIR ${range(next.minRir, next.maxRir ?? next.minRir)}` : note ? ` · ${note}` : ''}`;
   const { minRir: _oldMin, maxRir: _oldMax, ...base } = exercise;
   return { ...base, sets: next.sets, minReps: next.minReps, maxReps: next.maxReps, target, ...(next.minRir !== null ? { minRir: next.minRir, maxRir: next.maxRir ?? next.minRir } : {}) };
 }

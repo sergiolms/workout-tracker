@@ -3,6 +3,10 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { defaultState, weeksFromPeriods, type AppState } from '@/lib/storage';
 import { ProgressView } from '@/components/views/progress-view';
 import { TodayView } from '@/components/views/today-view';
+import { ExerciseSetEditor } from '@/components/exercise-set-editor';
+import { ExercisePrescriptionEditor } from '@/components/exercise-prescription-editor';
+import type { Exercise } from '@/lib/workout-data';
+import type { SetLog } from '@/lib/storage';
 
 const meta = { title: 'Revisión/Mejoras de entrenamiento' } satisfies Meta;
 export default meta;
@@ -19,3 +23,5 @@ function Example({ today = false }: { today?: boolean }) {
 }
 export const Progreso: Story = { render: () => <Example /> };
 export const Entrenamiento: Story = { render: () => <Example today /> };
+export const SeriesPorTiempo: Story = { render: function Timed() { const [exercise, setExercise] = useState<Exercise>({ ...exerciseFixture(), mode: 'time', unit: 'reps', loadKind: 'none', targetSeconds: 30, target: '3×30 s', name: 'Plancha' }); const [sets, setSets] = useState<SetLog[]>([{ reps: 0, seconds: 30, done: false }, { reps: 0, seconds: 30, done: false }]); return <div className="mx-auto max-w-lg"><p className="mb-4">Demostración · datos en memoria</p><ExercisePrescriptionEditor exercise={exercise} onChange={setExercise} defaultRest={{ restEnabled: true, restSeconds: 60 }} /><ExerciseSetEditor name="Plancha" mode={exercise.mode} unit={exercise.unit} loadKind={exercise.loadKind} load={0} sets={sets} onChange={setSets} /></div>; } };
+function exerciseFixture() { return exercise; }

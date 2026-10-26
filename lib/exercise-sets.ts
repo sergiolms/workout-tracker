@@ -27,12 +27,14 @@ export function exerciseSets(
   return [
     ...Array.from({ length: exercise.warmupSets ?? 0 }, () => ({
       reps: exercise.minReps,
+      ...(exercise.mode === 'time' ? { seconds: exercise.targetSeconds ?? 30, reps: 0 } : {}),
       done: false,
       load: 0,
       kind: 'warmup' as const,
     })),
     ...Array.from({ length: exercise.sets }, (_, index) => ({
       reps: exercise.maxReps,
+      ...(exercise.mode === 'time' ? { seconds: exercise.targetSeconds ?? 30, reps: 0 } : {}),
       done: false,
       load: previous
         ? setLoad(

@@ -12,7 +12,7 @@ export function performanceTrend(load: number, reps: number, previousLoad: numbe
 }
 
 export function previousExerciseLog(logs: ExerciseLog[], exercise: string | Exercise, workoutId: string): ExerciseLog | undefined {
-  return logs.filter(log => sameExercise(log, typeof exercise === 'string' ? { name: exercise } : exercise) && log.workoutId !== workoutId && !log.skipped && workingSets(log.sets).some(set => set.done))
+  return logs.filter(log => sameExercise(log, typeof exercise === 'string' ? { name: exercise } : exercise) && (typeof exercise === 'string' || ((log.mode ?? 'reps') === (exercise.mode ?? 'reps') && (log.loadKind ?? (log.unit === 'reps' ? 'none' : 'total')) === (exercise.loadKind ?? (exercise.unit === 'reps' ? 'none' : 'total')))) && log.workoutId !== workoutId && !log.skipped && workingSets(log.sets).some(set => set.done))
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
 }
 

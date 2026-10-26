@@ -67,7 +67,7 @@ import { Stepper } from '@/components/number-stepper';
 import { localDateKey, uid } from '@/lib/local-date';
 import { CardioForm } from '@/components/activity-form';
 import { ExercisePreview } from '@/components/exercises/exercise-media';
-import { exerciseIdentity, sameExercise } from '@/lib/exercise-identity';
+import { exerciseLogMetadata, sameExercise } from '@/lib/exercise-identity';
 import { ExerciseHistory } from '@/components/exercise-history';
 
 function markSessionStarted(key: string) {
@@ -187,8 +187,7 @@ export function TodayView({
           routine: routineId,
           workoutId,
           exercise: exercise.name,
-          exerciseId: exerciseIdentity(exercise),
-          unit: exercise.unit ?? 'kg',
+          ...exerciseLogMetadata(exercise),
           load,
           sets,
           rir,
@@ -390,8 +389,7 @@ export function TodayView({
       routine: routineId,
       workoutId,
       exercise: exercise.name,
-      exerciseId: exerciseIdentity(exercise),
-      unit: exercise.unit ?? 'kg',
+      ...exerciseLogMetadata(exercise),
       load,
       sets: confirmedSets,
       rir,
@@ -439,6 +437,7 @@ export function TodayView({
       routine: routineId,
       workoutId,
       exercise: exercise.name,
+      ...exerciseLogMetadata(exercise),
       load,
       sets: sets.map((set) => ({ ...set, done: false })),
       rir,
@@ -474,6 +473,7 @@ export function TodayView({
           routine: routineId,
           workoutId,
           exercise: exercise.name,
+          ...exerciseLogMetadata(exercise),
           load,
           sets,
           rir,
@@ -783,6 +783,8 @@ export function TodayView({
             ) : null}
             <ExerciseSetEditor
               name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
+              mode={exercise.mode}
+              loadKind={exercise.loadKind}
               sets={sets}
               load={load}
               unit={exercise.unit}
@@ -825,14 +827,14 @@ export function TodayView({
             <div className="mt-5">
               <OptionalSection
                 title="Sensaciones del ejercicio"
-                summary={`RIR ${rir} · ${pain ? `molestias ${pain}/10` : 'sin molestias'}`}
+                summary={`${exercise.mode === 'time' ? '' : `RIR ${rir} · `}${pain ? `molestias ${pain}/10` : 'sin molestias'}`}
               >
                 <div className="grid gap-5 sm:grid-cols-2">
-                  <RirSelector
+                  {exercise.mode !== 'time' ? <RirSelector
                     disabled={!editable}
                     onChange={setRir}
                     value={rir}
-                  />
+                  /> : null}
                   <PainSlider
                     disabled={!editable}
                     value={pain}

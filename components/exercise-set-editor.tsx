@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { GhostPerformance } from '@/components/workout-feedback';
 import { setLoad, workingSets } from '@/lib/exercise-sets';
 import type { ExerciseLog, SetLog } from '@/lib/storage';
+import { loadLabel } from '@/lib/exercise-identity';
 
 export function ExerciseSetEditor({
   sets,
@@ -18,6 +19,8 @@ export function ExerciseSetEditor({
   onComplete,
   disabled = false,
   name,
+  mode = 'reps',
+  loadKind,
 }: {
   sets: SetLog[];
   load: number;
@@ -27,12 +30,14 @@ export function ExerciseSetEditor({
   onComplete?: (sets: SetLog[], index: number) => void;
   disabled?: boolean;
   name?: string;
+  mode?: 'reps' | 'time';
+  loadKind?: ExerciseLog['loadKind'];
 }) {
   let workIndex = 0;
   let warmupIndex = 0;
   return (
     <fieldset disabled={disabled} className="min-w-0" aria-label={name ? `Series de ${name}` : 'Series del ejercicio'}>
-      <div className="set-editor-columns set-editor-heading" data-bodyweight={unit === 'reps'}><span>Serie</span>{unit !== 'reps' ? <span>Carga</span> : null}<span>Rep.</span><span>Hecho</span></div>
+      <div className="set-editor-columns set-editor-heading" data-bodyweight={unit === 'reps'}><span>Serie</span>{unit !== 'reps' ? <span>{loadKind === 'assistance' ? 'Ayuda' : 'Carga'}</span> : null}<span>{mode === 'time' ? 'Seg.' : 'Rep.'}</span><span>Hecho</span></div>
       {sets.map((set, index) => {
         const number = set.kind === 'warmup' ? null : workIndex++;
         const short = number === null ? `A${++warmupIndex}` : String(number + 1);
@@ -61,7 +66,7 @@ export function ExerciseSetEditor({
                 <div className="min-w-0">
                   <Stepper
                     compact
-                    label={`Carga, ${title}`}
+                    label={`${loadLabel(loadKind, unit)}, ${title}`}
                     step={0.5}
                     suffix={unit}
                     value={set.load ?? load}
@@ -72,9 +77,11 @@ export function ExerciseSetEditor({
               <div className="min-w-0">
                 <Stepper
                   compact
-                  label={`Repeticiones, ${title}`}
-                  value={set.reps}
-                  onChange={(reps) => patch({ reps })}
+                  label={`${mode === 'time' ? 'Segundos' : 'Repeticiones'}, ${title}`}
+                  value={mode === 'time' ? set.seconds ?? 0 : set.reps}
+                  step={mode === 'time' ? 5 : 1}
+                  max={mode === 'time' ? 86400 : 999}
+                  onChange={(value) => patch(mode === 'time' ? { seconds: value } : { reps: value })}
                 />
               </div>
               <Checkbox
@@ -91,7 +98,7 @@ export function ExerciseSetEditor({
                 }}
               />
             </div>
-            {old?.done && previous ? (
+            {old?.done && previous && mode !== 'time' && loadKind !== 'assistance' ? (
               <div className="mt-2">
                 <GhostPerformance
                   load={unit === 'reps' ? 0 : (set.load ?? load)}
@@ -106,6 +113,7 @@ export function ExerciseSetEditor({
         );
       })}
       <p className="mt-2 text-xs text-muted-foreground">Toca una cifra para editarla.{sets.some(set => set.kind === 'warmup') ? ' A: aproximación.' : ''}</p>
+      {loadKind === 'perHand' || loadKind === 'added' || loadKind === 'assistance' ? <p className="mt-2 text-sm text-muted-foreground">Carga en {loadLabel(loadKind, unit)}.</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           variant="ghost"
@@ -118,6 +126,7 @@ export function ExerciseSetEditor({
                 load,
                 done: false,
                 kind: 'work',
+                ...(mode === 'time' ? { seconds: sets.at(-1)?.seconds ?? 30, reps: 0 } : {}),
               },
             ])
           }
@@ -129,7 +138,7 @@ export function ExerciseSetEditor({
           className="min-h-11 px-2 text-xs text-muted-foreground"
           onClick={() =>
             onChange([
-              { reps: 8, load: 0, done: false, kind: 'warmup' },
+              { reps: mode === 'time' ? 0 : 8, ...(mode === 'time' ? { seconds: 15 } : {}), load: 0, done: false, kind: 'warmup' },
               ...sets,
             ])
           }
