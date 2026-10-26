@@ -293,7 +293,8 @@ export function useWorkoutAccount() {
       (mode !== 'cloud' || authReady) &&
       hydrated &&
       (!activeAccountId ||
-        (session?.accountId === activeAccountId && !stateQuery.isFetching)),
+        (session?.accountId === activeAccountId &&
+          (stateQuery.isFetchedAfterMount || !stateQuery.isFetching))),
     mode,
     accountId: session?.accountId ?? '',
     cloudReady,

@@ -215,7 +215,9 @@ export function ProfileView({
                   {user ? cloudReady ? <Cloud /> : <CloudOff /> : <HardDrive />}
                 </span>
                 <div>
-                  <strong className="block">{user ? 'Sincronización' : 'Guardado local'}</strong>
+                  <strong className="block">
+                    {user ? 'Sincronización' : 'Guardado local'}
+                  </strong>
                   <small className="text-muted-foreground">
                     {user && cloudReady
                       ? 'Sincronizado con la cuenta activa'
