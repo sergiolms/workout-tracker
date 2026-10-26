@@ -37,6 +37,7 @@ const settings = [
   'planName',
   'theme',
   'haptics',
+  'workoutView',
   'restEnabled',
   'restSeconds',
 ] as const;

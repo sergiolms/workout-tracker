@@ -17,6 +17,7 @@ export function ExerciseSetEditor({
   onChange,
   onComplete,
   disabled = false,
+  name,
 }: {
   sets: SetLog[];
   load: number;
@@ -25,11 +26,12 @@ export function ExerciseSetEditor({
   onChange: (sets: SetLog[]) => void;
   onComplete?: (sets: SetLog[], index: number) => void;
   disabled?: boolean;
+  name?: string;
 }) {
   let workIndex = 0;
   let warmupIndex = 0;
   return (
-    <fieldset disabled={disabled} className="min-w-0">
+    <fieldset disabled={disabled} className="min-w-0" aria-label={name ? `Series de ${name}` : 'Series del ejercicio'}>
       <div className="set-editor-columns set-editor-heading" data-bodyweight={unit === 'reps'}><span>Serie</span>{unit !== 'reps' ? <span>Carga</span> : null}<span>Rep.</span><span>Hecho</span></div>
       {sets.map((set, index) => {
         const number = set.kind === 'warmup' ? null : workIndex++;

@@ -34,6 +34,7 @@ export type AppState = {
   classes: string[];
   theme: ThemePreference;
   haptics?: boolean;
+  workoutView?: 'guided' | 'compact';
   restEnabled?: boolean;
   restSeconds?: number;
   trash?: DeletedRecords[];

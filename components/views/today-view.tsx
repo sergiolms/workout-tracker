@@ -7,7 +7,6 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
-  Save,
   Wind,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, useId } from 'react';
@@ -28,7 +27,6 @@ import { completedPlanSlots } from '@/lib/plan-progress';
 import { warmup, type Exercise } from '@/lib/workout-data';
 import {
   type AppState,
-  type CardioLog,
   type ExerciseLog,
   type WorkoutLog,
 } from '@/lib/storage';
@@ -42,13 +40,6 @@ import {
 } from '@/lib/exercise-sets';
 import { statusFromLog } from '@/lib/workout-history';
 import { OptionalSection } from '@/components/optional-section';
-import {
-  ActivityTypePicker,
-  DurationPicker,
-} from '@/components/activity-controls';
-import { EffortSelector } from '@/components/effort-selector';
-import { ActivityEstimates } from '@/components/activity-estimates';
-import { activityEstimates } from '@/lib/activity-estimates';
 import {
   previousExerciseLog,
   undoSkippedExercise,
@@ -74,6 +65,7 @@ import { MotionSurface, AnimatedDisclosure } from '@/components/motion-surface';
 import { ProgressRing } from '@/components/progress-ring';
 import { Stepper } from '@/components/number-stepper';
 import { localDateKey, uid } from '@/lib/local-date';
+import { CardioForm } from '@/components/activity-form';
 import { ExercisePreview } from '@/components/exercises/exercise-media';
 import { exerciseIdentity, sameExercise } from '@/lib/exercise-identity';
 import { ExerciseHistory } from '@/components/exercise-history';
@@ -137,6 +129,7 @@ export function TodayView({
     day: 'numeric',
     month: 'long',
   }).format(new Date());
+  const compact = state.workoutView === 'compact';
   const weekPlan =
     state.plan.find((week) => week.week === state.week) ?? state.plan[0];
   const sessionById = useMemo(
@@ -719,13 +712,14 @@ export function TodayView({
         className={`exercise-card ${saved ? 'ring-2 ring-emerald-500/40' : ''}`}
       >
         <MotionSurface motionKey={exercise.name}>
-          <div className="exercise-overview">
-            <ExercisePreview
+          <div className="flex justify-end border-b border-border px-4 py-1"><Button variant="ghost" className="min-h-11 text-sm" disabled={!editable} aria-pressed={compact} onClick={() => updateState(current => ({ ...current, workoutView: compact ? 'guided' : 'compact' }))}>{compact ? 'Mostrar imagen y detalles' : 'Solo series'}</Button></div>
+          <div className={compact ? 'p-4 sm:p-5' : 'exercise-overview'}>
+            {!compact ? <ExercisePreview
               key={exercise.name}
               image={exercise.image || details?.image}
               name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
               description={description}
-            />
+            /> : null}
             <div className="min-w-0">
               <p className="eyebrow">
                 Ejercicio {exerciseIndex + 1} / {sessionExercises.length}
@@ -736,9 +730,9 @@ export function TodayView({
               <p className="mt-3 text-sm font-semibold text-primary">
                 {exercise.target}
               </p>
-              <p className="mt-2 text-xs text-muted-foreground">
+              {!compact ? <p className="mt-2 text-xs text-muted-foreground">
                 Toca la imagen para ver la técnica
-              </p>
+              </p> : null}
             </div>
           </div>
 
@@ -788,6 +782,7 @@ export function TodayView({
               </p>
             ) : null}
             <ExerciseSetEditor
+              name={getExerciseDisplayName(exercise.name, exercise.catalogId)}
               sets={sets}
               load={load}
               unit={exercise.unit}
@@ -814,7 +809,8 @@ export function TodayView({
               }}
             />
 
-            <div className="mt-4">
+            <details key={compact ? 'compact' : 'guided'} open={compact ? undefined : true} className="mt-4"><summary hidden={!compact} className="min-h-11 cursor-pointer py-3 text-sm font-medium">Opciones y sensaciones</summary>
+            <div>
               <RestSettings
                 enabled={rest.enabled}
                 seconds={rest.seconds}
@@ -863,6 +859,7 @@ export function TodayView({
               </p>
             </div>
 
+            </details>
             <AnimatedDisclosure id="exercise-notes" open={showNotes}>
               <textarea
                 aria-label="Notas rápidas"
@@ -1026,167 +1023,6 @@ function WarmupCard({
           })}
         </div>
       </AnimatedDisclosure>
-    </section>
-  );
-}
-
-function CardioForm({
-  updateState,
-}: {
-  updateState: (updater: (state: AppState) => AppState) => void;
-}) {
-  const [type, setType] = useState('Caminata');
-  const [minutes, setMinutes] = useState(0);
-  const [steps, setSteps] = useState<number | null>(null);
-  const [rpe, setRpe] = useState(0);
-  const [distance, setDistance] = useState<number | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [stepLength, setStepLength] = useState(70);
-  const [stepsEstimated, setStepsEstimated] = useState(false);
-  const effectiveSteps = stepsEstimated
-    ? activityEstimates(minutes, distance ?? 0, stepLength).steps
-    : steps;
-  const isClass = [
-    'Pilates',
-    'Spinning',
-    'Body Pump',
-    'Total Training',
-  ].includes(type);
-  const save = () => {
-    if (minutes < 1) return;
-    const log: CardioLog = {
-      id: uid(),
-      date: new Date().toISOString(),
-      type,
-      minutes,
-      ...(!isClass && distance !== null ? { distance } : {}),
-      ...(!isClass && effectiveSteps !== null
-        ? {
-            steps: effectiveSteps,
-            ...(stepsEstimated
-              ? { stepsEstimated: true, stepLengthCm: stepLength }
-              : {}),
-          }
-        : {}),
-      ...(rpe > 0 ? { rpe } : {}),
-    };
-    updateState((state) => ({
-      ...state,
-      cardioLogs: [...state.cardioLogs, log],
-    }));
-    setSaved(true);
-  };
-  return (
-    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="space-y-5">
-        <ActivityTypePicker
-          value={type}
-          onChange={(value) => {
-            setType(value);
-            setSteps(effectiveSteps);
-            setStepsEstimated(false);
-            setSaved(false);
-          }}
-        />
-        <DurationPicker
-          value={minutes}
-          onChange={(value) => {
-            setMinutes(value);
-            setSaved(false);
-          }}
-        />
-        {!isClass ? (
-          <OptionalSection
-            title="Distancia y pasos"
-            summary={
-              [
-                distance !== null ? `${distance} km` : '',
-                effectiveSteps !== null
-                  ? `${effectiveSteps} pasos${stepsEstimated ? ' estimados' : ''}`
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' · ') || 'Añadir datos de la cinta o del reloj'
-            }
-          >
-            <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
-              <div>
-                <p className="control-label">Distancia</p>
-                <Stepper
-                  optional
-                  label="Distancia en km"
-                  value={distance}
-                  onChange={(value) => {
-                    setDistance(value);
-                    setSaved(false);
-                  }}
-                  step={0.5}
-                  suffix="km"
-                />
-              </div>
-              <div>
-                <p className="control-label">Pasos</p>
-                <Stepper
-                  optional
-                  label="Pasos"
-                  value={effectiveSteps}
-                  onChange={(value) => {
-                    setSteps(value);
-                    setStepsEstimated(false);
-                    setSaved(false);
-                  }}
-                  step={500}
-                />
-              </div>
-            </div>
-            <ActivityEstimates
-              minutes={minutes}
-              distance={distance ?? 0}
-              walking={type === 'Caminata'}
-              stepLength={stepLength}
-              onStepLengthChange={(value) => {
-                setStepLength(value);
-                setSaved(false);
-              }}
-              estimated={stepsEstimated}
-              onUseSteps={(value) => {
-                setSteps(value);
-                setStepsEstimated(true);
-                setSaved(false);
-              }}
-            />
-          </OptionalSection>
-        ) : null}
-        <OptionalSection
-          title="Sensaciones"
-          summary={
-            rpe ? `Esfuerzo ${rpe}/10` : '¿Cómo te has sentido? · opcional'
-          }
-        >
-          <EffortSelector
-            value={rpe}
-            onChange={(value) => {
-              setRpe(value);
-              setSaved(false);
-            }}
-          />
-        </OptionalSection>
-      </div>
-      <Button
-        className="mt-4 h-12 w-full rounded-xl font-bold"
-        disabled={minutes < 1 || saved}
-        onClick={save}
-      >
-        {saved ? (
-          <>
-            <Check /> Guardado
-          </>
-        ) : (
-          <>
-            <Save /> Guardar actividad
-          </>
-        )}
-      </Button>
     </section>
   );
 }
