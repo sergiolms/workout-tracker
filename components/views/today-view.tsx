@@ -75,6 +75,8 @@ import { ProgressRing } from '@/components/progress-ring';
 import { Stepper } from '@/components/number-stepper';
 import { localDateKey, uid } from '@/lib/local-date';
 import { ExercisePreview } from '@/components/exercises/exercise-media';
+import { exerciseIdentity, sameExercise } from '@/lib/exercise-identity';
+import { ExerciseHistory } from '@/components/exercise-history';
 
 function markSessionStarted(key: string) {
   try {
@@ -164,14 +166,14 @@ export function TodayView({
   const workoutId = resumedWorkout?.id ?? `${instanceSeed}:${routineId}`;
   const lastLog = previousExerciseLog(
     state.exerciseLogs,
-    exercise.name,
+    exercise,
     workoutId,
   );
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
   const routineLogs = state.exerciseLogs.filter(
     (log) => log.workoutId === workoutId,
   );
-  const currentLog = routineLogs.find((log) => log.exercise === exercise.name);
+  const currentLog = routineLogs.find((log) => sameExercise(log, exercise));
   const sets = exerciseSets(exercise, currentLog, lastLog);
   const load =
     currentLog?.load ?? lastLog?.load ?? (exercise.unit === 'reps' ? 0 : 20);
@@ -182,7 +184,7 @@ export function TodayView({
   const changeLog = (updater: (log: ExerciseLog) => ExerciseLog) =>
     updateState((current) => {
       const existing = current.exerciseLogs.find(
-        (log) => log.workoutId === workoutId && log.exercise === exercise.name,
+        (log) => log.workoutId === workoutId && sameExercise(log, exercise),
       );
       const log = updater(
         existing ?? {
@@ -192,6 +194,8 @@ export function TodayView({
           routine: routineId,
           workoutId,
           exercise: exercise.name,
+          exerciseId: exerciseIdentity(exercise),
+          unit: exercise.unit ?? 'kg',
           load,
           sets,
           rir,
@@ -236,6 +240,7 @@ export function TodayView({
     exercise.description ||
     getExerciseDescription(exercise.name, exercise.catalogId);
   const [showNotes, setShowNotes] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [showCardio, setShowCardio] = useState(false);
   const [showExercises, setShowExercises] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -392,6 +397,8 @@ export function TodayView({
       routine: routineId,
       workoutId,
       exercise: exercise.name,
+      exerciseId: exerciseIdentity(exercise),
+      unit: exercise.unit ?? 'kg',
       load,
       sets: confirmedSets,
       rir,
@@ -736,6 +743,8 @@ export function TodayView({
           </div>
 
           <div className="p-4 sm:p-5">
+            <Button variant="ghost" className="mb-3 min-h-11 px-0 underline underline-offset-4" onClick={() => setShowHistory(true)}>Historial del ejercicio</Button>
+            <Dialog open={showHistory} onOpenChange={setShowHistory}><DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"><DialogTitle>{getExerciseDisplayName(exercise.name, exercise.catalogId)}</DialogTitle><DialogDescription>Series de trabajo de sesiones anteriores. Las aproximaciones no cuentan.</DialogDescription><ExerciseHistory state={state} exercise={exercise} excludeWorkoutId={workoutId} /></DialogContent></Dialog>
             {exercise.unit !== 'reps' ? (
               <div className="mb-5">
                 <OptionalSection

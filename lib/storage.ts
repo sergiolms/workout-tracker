@@ -2,7 +2,7 @@ import type { Exercise } from './workout-data';
 import { statusFromLog } from './exercise-sets.ts';
 
 export type SetLog = { reps: number; done: boolean; load?: number; kind?: 'work' | 'warmup' };
-export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; effortUnknown?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
+export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; exerciseId?: string; unit?: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; effortUnknown?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
 export type WorkoutExerciseStatus = 'done' | 'partial' | 'skipped' | 'pending';
 export type WorkoutLog = { source?: 'hevy'; id: string; date: string; week: number; routine: string; routineName: string; exercises: Array<{ name: string; status: WorkoutExerciseStatus; logId?: string }>; notes: string };
 export type ActiveWorkout = { id: string; date: string; week: number; routine: string; startedAt: string; finishedAt?: string };

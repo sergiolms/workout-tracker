@@ -36,6 +36,7 @@ import { moveToTrash } from '@/lib/record-trash';
 import { RecordTrash } from '@/components/record-trash';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { ProgressRing } from '@/components/progress-ring';
+import { ExerciseProgress } from '@/components/exercise-history';
 
 export function ProgressView({
   editable,
@@ -46,7 +47,7 @@ export function ProgressView({
   state: AppState;
   updateState: (updater: (state: AppState) => AppState) => void;
 }) {
-  const [view, setView] = useState<'overview' | 'measurements' | 'history'>(
+  const [view, setView] = useState<'overview' | 'exercises' | 'measurements' | 'history'>(
     'overview',
   );
   const [historyKind, setHistoryKind] = useState<'workouts' | 'activities'>(
@@ -114,6 +115,7 @@ export function ProgressView({
         onChange={setView}
         items={[
           { id: 'overview', label: 'Resumen' },
+          { id: 'exercises', label: 'Ejercicios' },
           { id: 'measurements', label: 'Medidas' },
           { id: 'history', label: 'Historial' },
         ]}
@@ -177,6 +179,7 @@ export function ProgressView({
           </section>
         </>
       ) : null}
+      {view === 'exercises' ? <ExerciseProgress state={state} /> : null}
       {view === 'measurements' ? (
         <MeasurementTracker state={state} updateState={updateState} />
       ) : null}

@@ -1,6 +1,7 @@
 export type RoutineId = 'A1' | 'B1' | 'A2' | 'B2' | 'C1' | 'A3' | 'B3' | 'C2';
 
 export type Exercise = {
+  id?: string;
   name: string;
   target: string;
   sets: number;
