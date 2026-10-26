@@ -29,6 +29,7 @@ const collections = [
   'cardioLogs',
   'measurements',
   'activeWorkouts',
+  'trash',
 ] as const;
 const memberships = ['mobilityDone', 'warmupDone', 'classes'] as const;
 const settings = [
@@ -85,6 +86,7 @@ export function recordsState(
     cardioLogs: [],
     measurements: [],
     activeWorkouts: [],
+    trash: [],
     mobilityDone: [],
     warmupDone: [],
     classes: [],

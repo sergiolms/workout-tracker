@@ -6,6 +6,7 @@ const historyKeys = [
   'exerciseLogs',
   'cardioLogs',
   'measurements',
+  'trash',
 ] as const;
 const fail = (message: string): never => {
   throw Error(`Copia no válida: ${message}`);
@@ -88,9 +89,14 @@ export function parseBackup(text: string): AppState {
         fail('un registro supera el tamaño permitido.');
       if (
         historyKeys.includes(key as (typeof historyKeys)[number]) &&
-        !date(item.date)
+        !date(key === 'trash' ? item.deletedAt : item.date)
       )
         fail(`fecha incorrecta en ${key}.`);
+      if (key === 'trash') {
+        if (!string(item.label)) fail('registro eliminado incorrecto.');
+        for (const field of ['workoutLogs', 'exerciseLogs', 'cardioLogs', 'measurements']) if (!Array.isArray(item[field])) fail('contenido de papelera incorrecto.');
+        parseBackup(JSON.stringify({ ...defaultState, workoutLogs: item.workoutLogs, exerciseLogs: item.exerciseLogs, cardioLogs: item.cardioLogs, measurements: item.measurements }));
+      }
       if (key === 'sessions') {
         if (
           !string(item.name) ||
@@ -219,18 +225,18 @@ export function parseBackup(text: string): AppState {
 
 export function backupPreview(current: AppState, incoming: AppState) {
   return historyKeys.map((key) => {
-    const existing = new Map(current[key].map((item) => [item.id, item]));
-    const additions = incoming[key].filter(
+    const existing = new Map((current[key] ?? []).map((item) => [item.id, item]));
+    const additions = (incoming[key] ?? []).filter(
       (item) => !existing.has(item.id),
     ).length;
-    const conflicts = incoming[key].filter(
+    const conflicts = (incoming[key] ?? []).filter(
       (item) => existing.has(item.id) && !equal(existing.get(item.id), item),
     ).length;
     return {
       key,
       additions,
       conflicts,
-      duplicates: incoming[key].length - additions - conflicts,
+      duplicates: (incoming[key] ?? []).length - additions - conflicts,
     };
   });
 }
@@ -243,9 +249,9 @@ export function importBackup(
   const result = { ...current };
   for (const key of historyKeys) {
     const merged = new Map<string, unknown>(
-      current[key].map((item) => [item.id, item]),
+      (current[key] ?? []).map((item) => [item.id, item]),
     );
-    for (const item of incoming[key])
+    for (const item of incoming[key] ?? [])
       if (!merged.has(item.id) || options.replaceConflicts)
         merged.set(item.id, item);
     Object.assign(result, { [key]: [...merged.values()] });

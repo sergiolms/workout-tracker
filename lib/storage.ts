@@ -13,6 +13,7 @@ export type Session = { id: string; name: string; exercises: Exercise[] };
 export type PlanPeriod = { id: string; name: string; durationWeeks: number; routines: string[]; cardio: string; walks: string; mobility: string; optionalClass: string; deload?: boolean };
 export type PlanWeek = { week: number; block: string; sessions: number; routines: string[]; cardio: string; walks: string; mobility: string; optionalClass: string; deload?: boolean; periodId: string; periodWeek: number };
 export type ThemePreference = 'system' | 'light' | 'dark';
+export type DeletedRecords = { id: string; deletedAt: string; label: string; workoutLogs: WorkoutLog[]; exerciseLogs: ExerciseLog[]; cardioLogs: CardioLog[]; measurements: Measurement[] };
 
 export type AppState = {
   version: 3;
@@ -35,6 +36,7 @@ export type AppState = {
   haptics?: boolean;
   restEnabled?: boolean;
   restSeconds?: number;
+  trash?: DeletedRecords[];
 };
 
 export const defaultState: AppState = { version: 3, week: 1, planName: '', periods: [], sessions: [], plan: [], exerciseLogs: [], workoutLogs: [], cardioLogs: [], measurements: [], mobilityDone: [], warmupDone: [], classes: [], theme: 'system' };

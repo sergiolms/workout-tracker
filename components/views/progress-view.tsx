@@ -31,7 +31,9 @@ import {
   WorkoutHistoryEntry,
 } from '@/components/training-history';
 import { ViewTabs } from '@/components/view-tabs';
-import { applyActivityEdit, deleteActivity } from '@/lib/activity-history';
+import { applyActivityEdit } from '@/lib/activity-history';
+import { moveToTrash } from '@/lib/record-trash';
+import { RecordTrash } from '@/components/record-trash';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { ProgressRing } from '@/components/progress-ring';
 
@@ -95,25 +97,7 @@ export function ProgressView({
     : null;
   const deleteWorkout = () => {
     if (!deletingWorkout) return;
-    const logIds = new Set(
-      deletingWorkout.exercises.flatMap((exercise) =>
-        exercise.logId ? [exercise.logId] : [],
-      ),
-    );
-    updateState((current) => ({
-      ...current,
-      week: current.plan.some(
-        (week) =>
-          week.week === deletingWorkout.week &&
-          week.routines.includes(deletingWorkout.routine),
-      )
-        ? Math.min(current.week, deletingWorkout.week)
-        : current.week,
-      workoutLogs: current.workoutLogs.filter(
-        (workout) => workout.id !== deletingWorkout.id,
-      ),
-      exerciseLogs: current.exerciseLogs.filter((log) => !logIds.has(log.id)),
-    }));
+    updateState((current) => moveToTrash(current, 'workoutLogs', deletingWorkout.id));
     setDeletingWorkout(null);
   };
   return (
@@ -280,7 +264,7 @@ export function ProgressView({
           onClose={() => setDeletingActivity(null)}
           onConfirm={() => {
             updateState((current) =>
-              deleteActivity(current, deletingActivity.id),
+              moveToTrash(current, 'cardioLogs', deletingActivity.id),
             );
             setDeletingActivity(null);
           }}
@@ -306,7 +290,7 @@ export function ProgressView({
           <DialogTitle>¿Borrar este entrenamiento?</DialogTitle>
           <DialogDescription>
             Se eliminará esta sesión y los registros de ejercicios vinculados.
-            No se puede deshacer.
+            Podrás restaurarlos desde Registros eliminados, en Progreso o Perfil.
           </DialogDescription>
           <div className="mt-4 flex justify-end gap-2">
             <Button onClick={() => setDeletingWorkout(null)} variant="outline">
@@ -321,6 +305,7 @@ export function ProgressView({
           </div>
         </DialogContent>
       </Dialog>
+      <RecordTrash state={state} updateState={updateState} editable={editable} />
     </div>
   );
 }

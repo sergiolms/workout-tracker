@@ -18,6 +18,7 @@ const labels = {
   exerciseLogs: 'Ejercicios registrados',
   cardioLogs: 'Actividades',
   measurements: 'Medidas',
+  trash: 'Registros eliminados',
 };
 export function BackupImporter({
   state,
