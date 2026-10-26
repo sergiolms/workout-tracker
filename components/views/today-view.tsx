@@ -69,6 +69,7 @@ import { CardioForm } from '@/components/activity-form';
 import { ExercisePreview } from '@/components/exercises/exercise-media';
 import { exerciseLogMetadata, sameExercise } from '@/lib/exercise-identity';
 import { ExerciseHistory } from '@/components/exercise-history';
+import { nextRotationRoutine, rotationRoutines } from '@/lib/rotation';
 
 function markSessionStarted(key: string) {
   try {
@@ -130,8 +131,7 @@ export function TodayView({
     month: 'long',
   }).format(new Date());
   const compact = state.workoutView === 'compact';
-  const weekPlan =
-    state.plan.find((week) => week.week === state.week) ?? state.plan[0];
+  const weekPlan = useMemo(() => state.rotation ? { week: state.week, block: 'Rotación', routines: rotationRoutines(state), sessions: rotationRoutines(state).length, cardio: '', walks: '', mobility: '', optionalClass: '', deload: false, periodId: '', periodWeek: 1 } : state.plan.find((week) => week.week === state.week) ?? state.plan[0], [state]);
   const sessionById = useMemo(
     () => new Map(state.sessions.map((session) => [session.id, session])),
     [state.sessions],
@@ -143,7 +143,7 @@ export function TodayView({
   const [routineId, setRoutineId] = useState<string>(
     preferredRoutine && routineIds.includes(preferredRoutine)
       ? preferredRoutine
-      : (routineIds.find(
+      : (nextRotationRoutine(state) ?? routineIds.find(
           (id) =>
             !completedPlanSlots(state.workoutLogs).has(`${state.week}:${id}`),
         ) ??
@@ -490,6 +490,7 @@ export function TodayView({
         ]
       : routineLogs;
     const workout: WorkoutLog = {
+      ...(state.rotation ? { rotationId: state.rotation.id } : {}),
       id: workoutId,
       date,
       week: state.week,
@@ -613,7 +614,7 @@ export function TodayView({
           <p className="page-subtitle capitalize">{today}</p>
         </div>
         <span className="text-xs text-muted-foreground">
-          Semana {state.week}
+          {state.rotation ? 'Secuencia flexible' : `Semana ${state.week}`}
         </span>
       </section>
 
@@ -633,7 +634,7 @@ export function TodayView({
                   }}
                   type="button"
                 >
-                  {completedPlanSlots(state.workoutLogs).has(
+                  {!state.rotation && completedPlanSlots(state.workoutLogs).has(
                     `${state.week}:${id}`,
                   )
                     ? '✓ '

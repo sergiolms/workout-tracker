@@ -32,6 +32,7 @@ import { useAppUpdates } from '@/hooks/use-app-updates';
 import { useSystemTheme } from '@/hooks/use-system-theme';
 import { WorkoutTimer } from '@/components/views/timer-view';
 import { ViewBoundary } from '@/components/view-boundary';
+import { nextRotationRoutine } from '@/lib/rotation';
 
 const TodayView = lazy(() =>
   import('@/components/views/today-view').then((module) => ({
@@ -161,7 +162,8 @@ export default function HomePage() {
       ...state.workoutLogs.filter((item) => item.id !== workout.id),
       workout,
     ];
-    const next = countsTowardPlan(workout)
+    const rotationNext = state.rotation ? nextRotationRoutine(state, updatedWorkouts) : null;
+    const next = rotationNext ? { week: state.week, routine: rotationNext } : countsTowardPlan(workout)
       ? nextPlanSession(
           state.plan,
           updatedWorkouts,
@@ -194,7 +196,7 @@ export default function HomePage() {
         state.sessions.find((session) => session.id === next.routine)?.name ??
         next.routine;
       setTrainingNotice(
-        `Sesión registrada. Siguiente: ${name} · semana ${next.week}.`,
+        `Sesión registrada. Siguiente: ${name}${state.rotation ? ' · rotación' : ` · semana ${next.week}`}.`,
       );
     } else {
       setTrainingNotice(

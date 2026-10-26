@@ -39,6 +39,7 @@ import { Stepper } from '@/components/number-stepper';
 import { uid } from '@/lib/local-date';
 import { SessionBuilder } from '@/components/plan/session-builder';
 import { PlanSharing } from '@/components/plan/plan-sharing';
+import { RotationSettings } from '@/components/plan/rotation-settings';
 
 export function PlanView({
   state,
@@ -254,6 +255,7 @@ export function PlanView({
         ]}
       />
       {view === 'routines' ? <PlanSharing state={state} updateState={updateState} /> : null}
+      {view === 'routines' ? <RotationSettings state={state} updateState={updateState} /> : null}
       <Dialog
         open={planNameDraft !== null}
         onOpenChange={(open) => {

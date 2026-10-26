@@ -7,7 +7,7 @@ export function countsTowardPlan(workout: WorkoutLog): boolean {
 }
 
 export function completedPlanSlots(logs: WorkoutLog[]): Set<string> {
-  return new Set(logs.filter(countsTowardPlan).map((log) => `${log.week}:${log.routine}`));
+  return new Set(logs.filter(log => !log.rotationId && countsTowardPlan(log)).map((log) => `${log.week}:${log.routine}`));
 }
 
 export function planProgress(plan: PlanWeek[], logs: WorkoutLog[]) {

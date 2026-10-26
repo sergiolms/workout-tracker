@@ -38,6 +38,7 @@ const settings = [
   'theme',
   'haptics',
   'workoutView',
+  'rotation',
   'restEnabled',
   'restSeconds',
 ] as const;
