@@ -63,6 +63,30 @@
       "rules": {
         "typescript/no-floating-promises": "off"
       }
+    },
+    {
+      "files": [
+        "components/ui/**"
+      ],
+      "rules": {
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
+    },
+    {
+      "files": [
+        "components/ui/label.tsx"
+      ],
+      "rules": {
+        "jsx-a11y/label-has-associated-control": "off"
+      }
+    },
+    {
+      "files": [
+        "components/ui/pagination.tsx"
+      ],
+      "rules": {
+        "jsx-a11y/anchor-has-content": "off"
+      }
     }
   ]
 }

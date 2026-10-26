@@ -3,8 +3,9 @@
 import { Check, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { ExerciseImage } from '@/components/exercises/exercise-media';
 
-type Item = { name: string; status: 'pending' | 'done' | 'partial' | 'skipped' };
+type Item = { name: string; image?: string; status: 'pending' | 'done' | 'partial' | 'skipped' };
 const statusLabel = { done: 'Hecho', partial: 'Parcial', skipped: 'Omitido', pending: 'Pendiente' };
 
 export function ExercisePickerSheet({ items, current, open, onOpenChange, onSelect, dark = false }: { items: Item[]; current: number; open: boolean; onOpenChange: (open: boolean) => void; onSelect: (index: number) => void; dark?: boolean }) {
@@ -12,7 +13,7 @@ export function ExercisePickerSheet({ items, current, open, onOpenChange, onSele
     <DialogTrigger aria-label="Seleccionar ejercicio" className="flex min-h-14 min-w-0 flex-1 items-center gap-2 rounded-xl bg-card px-3 text-left"><span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{current + 1}/{items.length}</span><span className="min-w-0 flex-1 truncate text-sm font-semibold">{items[current]?.name}</span><ChevronRight className="size-4 shrink-0 rotate-90 text-muted-foreground" /></DialogTrigger>
     <DialogContent className={`${dark ? 'dark' : ''} exercise-sheet`}>
       <div aria-hidden="true" className="mx-auto mb-1 h-1 w-10 rounded-full bg-muted-foreground/30" /><DialogTitle>Ejercicios de la sesión</DialogTitle><DialogDescription>{items.filter(item => item.status === 'done').length}/{items.length} completados · elige dónde continuar</DialogDescription>
-      <ul className="space-y-1">{items.map((item, index) => <li key={item.name}><button type="button" aria-current={index === current ? 'step' : undefined} onClick={() => { onSelect(index); onOpenChange(false); }} className={`flex min-h-14 w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${index === current ? 'bg-primary/10 font-semibold text-primary' : 'hover:bg-muted'}`}><span className="w-5 shrink-0 text-center text-xs tabular-nums">{index + 1}</span><span className="min-w-0 flex-1">{item.name}</span>{item.status === 'done' ? <Check aria-label="Completado" className="size-5 shrink-0 text-emerald-600" /> : <span className="shrink-0 text-xs text-muted-foreground">{statusLabel[item.status]}</span>}</button></li>)}</ul>
+      <ul className="space-y-1">{items.map((item, index) => <li key={item.name}><button type="button" aria-current={index === current ? 'step' : undefined} onClick={() => { onSelect(index); onOpenChange(false); }} className={`flex min-h-14 w-full items-center gap-3 rounded-xl px-3 py-2 text-left ${index === current ? 'bg-primary/10 font-semibold text-primary' : 'hover:bg-muted'}`}><span className="w-5 shrink-0 text-center text-xs tabular-nums">{index + 1}</span><span className="size-14 shrink-0 overflow-hidden rounded-lg bg-muted"><ExerciseImage image={item.image} name={item.name} /></span><span className="min-w-0 flex-1">{item.name}</span>{item.status === 'done' ? <Check aria-label="Completado" className="size-5 shrink-0 text-emerald-600" /> : <span className="shrink-0 text-xs text-muted-foreground">{statusLabel[item.status]}</span>}</button></li>)}</ul>
     </DialogContent>
   </Dialog>;
 }

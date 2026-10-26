@@ -83,6 +83,6 @@ export function SectionedExerciseCatalog({ sections, renderExercise }: CatalogPr
         </div>)}
       </div>
     </section>
-    {sections.length ? <AlphabetWheel letters={alphabet} availableLetters={sections.map(section => section.letter)} value={active ?? sections[0].letter} onChange={navigate} /> : null}
+    {sections.length && sections[0].letter !== 'Resultados' ? <AlphabetWheel letters={alphabet} availableLetters={sections.map(section => section.letter)} value={active ?? sections[0].letter} onChange={navigate} /> : null}
   </div>;
 }

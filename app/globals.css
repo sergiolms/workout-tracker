@@ -331,7 +331,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--primary);
 .view-tabs > button::after { content: ''; position: absolute; height: 2px; bottom: -1px; inset-inline: 0; background: var(--primary); transform: scaleX(0); transition: transform 180ms ease; }
 .view-tabs > button[aria-pressed="true"] { color: var(--foreground); font-weight: 700; }
 .view-tabs > button[aria-pressed="true"]::after { transform: scaleX(1); }
-.plan-week-card { --background: #282521; --foreground: #f7f1e7; --card: #282521; --primary: #f4a36c; --primary-foreground: #29180e; --muted-foreground: #c3b6a6; --border: #6c5f52; background: var(--card); color: var(--foreground); }
+.plan-week-card { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
 .week-number { font-size: 88px; line-height: 1; font-weight: 700; letter-spacing: -.08em; color: var(--primary); }
 .routine-card { display: flex; align-items: center; gap: 14px; padding: 16px 0; }
 .routine-card + .routine-card { border-top: 1px solid var(--border); }
@@ -582,6 +582,7 @@ summary[data-feedback-pressed="true"] {
 .catalog-filter-choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .session-builder-settings::-webkit-scrollbar, .catalog-section-list::-webkit-scrollbar { display: none; }
 .sectioned-catalog { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
+.sectioned-catalog:not(:has(.alphabet-index)) { grid-template-columns: minmax(0, 1fr); }
 .catalog-section-list { position: relative; min-height: 0; overflow-y: auto; scrollbar-width: none; overscroll-behavior-y: none; touch-action: pan-y; padding-bottom: 12px; }
 .catalog-section-title { display: flex; align-items: end; height: 40px; padding-block: 8px; color: var(--primary); font-size: 14px; font-weight: 700; }
 .catalog-exercise-row { border-bottom: 1px solid var(--border); }

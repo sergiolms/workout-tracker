@@ -2,9 +2,9 @@ import type { Exercise } from './workout-data';
 import { statusFromLog } from './exercise-sets.ts';
 
 export type SetLog = { reps: number; done: boolean; load?: number; kind?: 'work' | 'warmup' };
-export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
+export type ExerciseLog = { id: string; date: string; week: number; routine: string; workoutId?: string; exercise: string; load: number; sets: SetLog[]; rir: number; pain: number; note: string; skipped?: boolean; effortUnknown?: boolean; suggestion: 'subir' | 'mantener' | 'bajar' };
 export type WorkoutExerciseStatus = 'done' | 'partial' | 'skipped' | 'pending';
-export type WorkoutLog = { id: string; date: string; week: number; routine: string; routineName: string; exercises: Array<{ name: string; status: WorkoutExerciseStatus; logId?: string }>; notes: string };
+export type WorkoutLog = { source?: 'hevy'; id: string; date: string; week: number; routine: string; routineName: string; exercises: Array<{ name: string; status: WorkoutExerciseStatus; logId?: string }>; notes: string };
 export type ActiveWorkout = { id: string; date: string; week: number; routine: string; startedAt: string; finishedAt?: string };
 export type CardioLog = { id: string; date: string; type: string; minutes: number; distance?: number; steps?: number; stepsEstimated?: boolean; stepLengthCm?: number; rpe?: number; heartRate?: number };
 export type Measurement = { id: string; date: string; weight?: number; waist?: number; restingHr?: number; sleep?: number; energy?: number; pain?: number };

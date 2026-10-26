@@ -1,6 +1,7 @@
 import catalog from './exercise-catalog.json';
 import { normalizeExerciseSearch, spanishExerciseName } from './exercise-translation';
 import { matchesCatalogFilters, type CatalogFilters } from './catalog-filters';
+import { exerciseSearchScore, searchWords } from './exercise-search';
 
 export type CatalogExercise = {
   id: string;
@@ -86,7 +87,8 @@ const indexedCatalog = exerciseCatalog.map((item) => {
   return {
     item,
     spanishName,
-    search: normalizeExerciseSearch([spanishName, item.name, item.target, item.bodyPart, item.equipment, item.muscle, item.description].join(' ')),
+    names: searchWords(`${spanishName} ${item.name}`),
+    attributes: searchWords(`${item.target} ${item.bodyPart} ${item.equipment} ${item.muscle}`),
   };
 }).sort((a, b) => a.spanishName.localeCompare(b.spanishName, 'es-ES'));
 
@@ -96,9 +98,9 @@ export const catalogLetters = Array.from(new Set(indexedCatalog.map(({ spanishNa
 
 export function browseCatalog(query: string, letter: string, page: number, pageSize = 20) {
   const normalizedQuery = normalizeExerciseSearch(query);
-  const matches = indexedCatalog.filter(({ spanishName, search }) =>
+  const matches = indexedCatalog.filter(({ spanishName, names, attributes }) =>
     normalizedQuery
-      ? normalizedQuery.split(/\s+/).every((token) => search.includes(token))
+      ? exerciseSearchScore(searchWords(query), names, attributes) > 0
       : !letter || normalizeExerciseSearch(spanishName).startsWith(letter.toLowerCase()),
   );
   const totalPages = Math.max(1, Math.ceil(matches.length / pageSize));
@@ -117,10 +119,19 @@ export function searchCatalog(query: string, limit = 40): CatalogExercise[] {
 
 /** One continuous catalogue; alphabet navigation never removes other sections. */
 export function exerciseCatalogSections(query = '', filters: CatalogFilters = {}) {
-  const tokens = normalizeExerciseSearch(query).split(/\s+/).filter(Boolean);
+  const tokens = searchWords(query);
+  if (tokens.length) {
+    const matches = indexedCatalog.filter(({ item }) => matchesCatalogFilters(item, filters))
+      .map(entry => {
+        const score = exerciseSearchScore(tokens, entry.names, entry.attributes);
+        return { ...entry, score: score ? score - entry.names.length * 0.001 : 0 };
+      })
+      .filter(entry => entry.score > 0).sort((a, b) => b.score - a.score || a.spanishName.localeCompare(b.spanishName, 'es'));
+    return matches.length ? [{ letter: 'Resultados', items: matches.map(entry => entry.item) }] : [];
+  }
   const sections = new Map<string, CatalogExercise[]>();
-  for (const { item, spanishName, search } of indexedCatalog) {
-    if (!tokens.every(token => search.includes(token)) || !matchesCatalogFilters(item, filters)) continue;
+  for (const { item, spanishName } of indexedCatalog) {
+    if (!matchesCatalogFilters(item, filters)) continue;
     const initial = normalizeExerciseSearch(spanishName).charAt(0).toUpperCase();
     const letter = /^[A-Z]$/.test(initial) ? initial : '#';
     const items = sections.get(letter) ?? [];

@@ -23,23 +23,26 @@ export function BackupImporter({
   state,
   editable,
   onImport,
+  format = 'base',
 }: {
   state: AppState;
   editable: boolean;
   onImport: (update: (state: AppState) => AppState) => void;
+  format?: 'base' | 'hevy';
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [incoming, setIncoming] = useState<AppState | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [imported, setImported] = useState(false);
+  const [warnings, setWarnings] = useState<string[]>([]);
   return (
     <div className="mt-3">
       <input
         ref={input}
-        aria-label="Archivo de copia de Base"
+        aria-label={format === 'hevy' ? 'Archivo CSV de Hevy' : 'Archivo de copia de Base'}
         type="file"
-        accept="application/json,.json"
+        accept={format === 'hevy' ? '.csv,text/csv' : 'application/json,.json'}
         className="sr-only"
         tabIndex={-1}
         onChange={async (event) => {
@@ -48,10 +51,17 @@ export function BackupImporter({
           if (!file) return;
           setError('');
           setImported(false);
+          setWarnings([]);
           setLoading(true);
           try {
             if (file.size > 20_000_000) throw Error('El archivo supera 20 MB.');
-            setIncoming(parseBackup(await file.text()));
+            const text = await file.text();
+            if (format === 'hevy') {
+              const { parseHevyCsv } = await import('@/lib/hevy-import');
+              const result = await parseHevyCsv(text);
+              setIncoming(result.state);
+              setWarnings(result.warnings);
+            } else setIncoming(parseBackup(text));
           } catch (reason) {
             setError(
               reason instanceof Error
@@ -69,8 +79,9 @@ export function BackupImporter({
         disabled={!editable || loading}
         onClick={() => input.current?.click()}
       >
-        <Upload /> {loading ? 'Leyendo copia…' : 'Importar copia de Base'}
+        <Upload /> {loading ? 'Leyendo archivo…' : format === 'hevy' ? 'Importar CSV de Hevy' : 'Importar copia de Base'}
       </Button>
+      {format === 'hevy' ? <p className="mt-2 text-xs text-muted-foreground">En Hevy: Perfil → Ajustes → Exportar e importar datos. Elige entrenamientos o medidas. Las fechas sin zona horaria se interpretan en la zona de este dispositivo. Tu plan se conserva.</p> : null}
       {error ? (
         <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
           {error}
@@ -87,6 +98,7 @@ export function BackupImporter({
           state={state}
           incoming={incoming}
           editable={editable}
+          warnings={warnings}
           onClose={() => setIncoming(null)}
           onImport={(update) => {
             onImport(update);
@@ -104,12 +116,14 @@ export function BackupImportDialog({
   editable,
   onClose,
   onImport,
+  warnings = [],
 }: {
   state: AppState;
   incoming: AppState;
   editable: boolean;
   onClose: () => void;
   onImport: (update: (state: AppState) => AppState) => void;
+  warnings?: string[];
 }) {
   const id = useId();
   const [includePlan, setIncludePlan] = useState(false);
@@ -129,6 +143,7 @@ export function BackupImportDialog({
           Se añadirán los registros nuevos. Si uno ya existe, lo conservamos
           salvo que elijas sustituirlo. Las sesiones en curso no se importan.
         </DialogDescription>
+        {warnings.length ? <ul className="list-disc space-y-2 pl-4 text-sm text-muted-foreground">{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul> : null}
         <dl className="divide-y divide-border">
           {preview.map((row) => (
             <div

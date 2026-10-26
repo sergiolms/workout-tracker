@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check types and lint application components
+        run: npm run typecheck && npm run lint
+
       - name: Test persistence and workout logic
         run: npm test
 
