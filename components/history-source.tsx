@@ -3,67 +3,76 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
+import {
+  QueryClientProvider,
+  useQueries,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import type { AppState } from '@/lib/storage';
 
 import type { HistorySource } from '@/lib/history-source';
-const HistoryContext = createContext<HistorySource | null>(null);
-export const HistoryProvider = HistoryContext.Provider;
-export const useHistorySource = () => useContext(HistoryContext);
+import { historyQueryOptions, missingHistoryMonths } from '@/lib/history-query';
+import { createAccountQueryClient } from '@/lib/account-query';
+
+const HistoryContext = createContext<{
+  source: HistorySource | null;
+  client: QueryClient;
+} | null>(null);
+
+export function HistoryProvider({
+  value,
+  children,
+}: {
+  value: HistorySource | null;
+  children: ReactNode;
+}) {
+  const context = useMemo(
+    () => ({
+      source: value,
+      client: value?.client ?? createAccountQueryClient(),
+      scope: crypto.randomUUID(),
+    }),
+    [value],
+  );
+  return (
+    <QueryClientProvider key={context.scope} client={context.client}>
+      <HistoryContext value={context}>{children}</HistoryContext>
+    </QueryClientProvider>
+  );
+}
+
+export const useHistorySource = () =>
+  useContext(HistoryContext)?.source ?? null;
 
 export function useHistoryMonths(
   state: AppState | undefined,
   months: string[] | 'all',
   enabled = true,
 ) {
-  const source = useHistorySource();
-  const requested =
-    months === 'all' ? 'all' : [...new Set(months)].sort().join(',');
-  const loaded = state?.history?.loadedMonths.join(',') ?? '';
-  const missing = useMemo(() => {
-    if (!enabled || !source || !state?.history || state.history.complete)
-      return [];
-    if (requested === 'all') return ['all'];
-    const known = new Set(loaded.split(','));
-    return requested.split(',').filter((month) => month && !known.has(month));
-  }, [enabled, source, requested, loaded, state?.history]);
-  const missingKey = missing.join(',');
-  const [failure, setFailure] = useState<{
-    key: string;
-    message: string;
-  } | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  const requestKey = `${missingKey}:${attempt}`;
-  useEffect(() => {
-    if (!source || !missingKey) return;
-    let active = true;
-    const load =
-      missingKey === 'all'
-        ? source.loadAll()
-        : Promise.all(missingKey.split(',').map(source.loadMonth));
-    void load.catch((reason) => {
-      if (active)
-        setFailure({
-          key: requestKey,
-          message:
-            reason instanceof Error
-              ? reason.message
-              : 'No se pudieron cargar los registros.',
-        });
-    });
-    return () => {
-      active = false;
-    };
-  }, [source, missingKey, requestKey]);
+  const context = useContext(HistoryContext);
+  const [fallbackClient] = useState(createAccountQueryClient);
+  const source = context?.source;
+  const missing = source ? missingHistoryMonths(state, months, enabled) : [];
+  const queries = useQueries(
+    {
+      queries: source
+        ? missing.map((month) => historyQueryOptions(source, month))
+        : [],
+    },
+    context?.client ?? fallbackClient,
+  );
+  const failure = queries.find((query) => query.isError)?.error;
   return {
-    loading: Boolean(missingKey),
-    error: failure?.key === requestKey ? failure.message : '',
-    retry: () => setAttempt((value) => value + 1),
+    loading: missing.length > 0,
+    error: failure?.message ?? '',
+    retry: () => {
+      for (const query of queries) if (query.isError) void query.refetch();
+    },
   };
 }
 

@@ -20,6 +20,9 @@ const labels = {
   cardioLogs: 'Actividades',
   measurements: 'Medidas',
   trash: 'Registros eliminados',
+  mobilityDone: 'Movilidad',
+  warmupDone: 'Calentamientos',
+  classes: 'Clases',
 };
 export function BackupImporter({
   state,
@@ -108,8 +111,7 @@ export function BackupImporter({
       ) : null}
       {imported ? (
         <output className="mt-2 block text-sm">
-          Importación añadida. El indicador de guardado confirma cuándo está en
-          Firebase.
+          Importación añadida. El indicador de guardado confirma cuándo termina.
         </output>
       ) : null}
       {incoming ? (

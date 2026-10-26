@@ -12,7 +12,7 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint app lib public components hooks stories --deny-warnings",
     "format": "oxfmt",
-    "test": "node --test lib/*.test.mjs",
+    "test": "node --test lib/*.test.mjs tests/account-access.test.mjs",
     "test:rules": "npx --yes --package firebase-tools@15.34.1 firebase emulators:exec --only firestore --project demo-workout-tracker \"node --test tests/firestore-rules.test.mjs\"",
     "storybook": "storybook dev -p 6006 --host 127.0.0.1 --no-open --disable-telemetry",
     "build-storybook": "storybook build --disable-telemetry",
@@ -21,6 +21,7 @@
   "dependencies": {
     "@base-ui/react": "1.7.0",
     "@shadcn/react": "0.3.0",
+    "@tanstack/react-query": "5.105.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
@@ -53,16 +54,17 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.37",
     "fake-indexeddb": "6.2.6",
+    "happy-dom": "21.0.4",
     "oxfmt": "0.74.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",
+    "shadcn": "4.22.1",
     "sharp": "0.35.5",
     "storybook": "10.6.2",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vite": "8.3.5",
-    "wrangler": "4.152.0",
-    "shadcn": "4.22.1"
+    "wrangler": "4.152.0"
   },
   "type": "module",
   "overrides": {

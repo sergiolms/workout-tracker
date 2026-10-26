@@ -6,6 +6,8 @@ import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { DialogThemeProvider } from '@/components/ui/dialog';
 import { firebaseConfigured } from '@/lib/firebase';
+import { AccessScreen } from '@/components/access-screen';
+import { LocalDataImport } from '@/components/local-data-import';
 import { countsTowardPlan, nextPlanSession } from '@/lib/plan-progress';
 import { type ExerciseLog, type WorkoutLog } from '@/lib/storage';
 import { SyncConflicts } from '@/components/sync-conflicts';
@@ -63,6 +65,13 @@ export default function HomePage() {
     handleGoogleLogin,
     handleLogout,
     resolveConflicts,
+    retrySync,
+    syncing,
+    mode,
+    accountId,
+    handleUseLocal,
+    localImport,
+    dismissLocalImport,
   } = useWorkoutAccount();
   const [tab, setTab] = useState<Tab>('today');
   const systemDark = useSystemTheme();
@@ -187,7 +196,7 @@ export default function HomePage() {
   const content =
     tab === 'today' ? (
       <TodayView
-        accountId={firebaseUser?.uid ?? ''}
+        accountId={accountId}
         editable={persistenceStatus.canEdit}
         key={`${state.week}:${preferredRoutine}`}
         state={state}
@@ -229,60 +238,51 @@ export default function HomePage() {
 
   if (!hydrated)
     return (
-      <main className="grid min-h-dvh place-items-center bg-background px-6 text-foreground">
-        <div className="text-center">
-          <span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground">
-            <HeartPulse className="size-7" />
-          </span>
-          <p className="text-sm text-muted-foreground">Comprobando acceso…</p>
-        </div>
-      </main>
-    );
-  if (!firebaseUser || firebaseUser.isAnonymous)
-    return (
-      <main className="grid min-h-dvh place-items-center bg-background px-5 py-10 text-foreground">
-        <section className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          <span className="mb-5 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground">
-            <HeartPulse className="size-7" strokeWidth={2.4} />
-          </span>
-          <p className="eyebrow">Zero to Hero</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            Inicia sesión para continuar
-          </h1>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Tus sesiones y tu seguimiento se guardan de forma privada en tu
-            cuenta.
-          </p>
-          <Button
-            className="mt-6 h-12 w-full rounded-xl bg-white font-bold text-zinc-900 shadow-sm ring-1 ring-zinc-200 hover:bg-zinc-50"
-            disabled={authBusy || !firebaseConfigured}
-            onClick={handleGoogleLogin}
-          >
-            <span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">
-              G
+      <div className={isDark ? 'dark' : ''}>
+        <main className="grid min-h-dvh place-items-center bg-background px-6 text-foreground">
+          <div className="text-center">
+            <span className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground">
+              <HeartPulse className="size-7" />
             </span>
-            {authBusy ? 'Conectando…' : 'Continuar con Google'}
-          </Button>
-          {!firebaseConfigured ? (
-            <p className="mt-3 text-sm text-amber-700 dark:text-amber-300">
-              El acceso no está disponible: falta configurar Firebase.
-            </p>
-          ) : null}
-          {authError ? (
-            <p
-              role="alert"
-              className="mt-3 text-sm font-medium text-red-600 dark:text-red-300"
-            >
-              {authError}
-            </p>
-          ) : null}
-        </section>
-      </main>
+            <p className="text-sm text-muted-foreground">Abriendo tu diario…</p>
+            {mode !== 'local' ? (
+              <Button
+                className="mt-5 min-h-11"
+                variant="ghost"
+                disabled={authBusy}
+                onClick={handleUseLocal}
+              >
+                Usar sin cuenta (sólo local)
+              </Button>
+            ) : null}
+          </div>
+        </main>
+      </div>
+    );
+  if (mode !== 'local' && (!firebaseUser || firebaseUser.isAnonymous))
+    return (
+      <AccessScreen
+        dark={isDark}
+        busy={authBusy}
+        error={authError}
+        cloudAvailable={firebaseConfigured}
+        onLocal={handleUseLocal}
+        onSync={handleGoogleLogin}
+      />
     );
 
   return (
     <HistoryProvider value={historySource}>
       <DialogThemeProvider value={isDark}>
+        {localImport && mode === 'cloud' ? (
+          <LocalDataImport
+            state={state}
+            incoming={localImport}
+            editable={persistenceStatus.canEdit}
+            onImport={updateState}
+            onClose={dismissLocalImport}
+          />
+        ) : null}
         <div className={isDark ? 'dark' : ''}>
           <div
             className="app-shell bg-background text-foreground"
@@ -362,22 +362,33 @@ export default function HomePage() {
                         onResolve={resolveConflicts}
                       />
                     ) : persistenceStatus.error ? (
-                      <p
+                      <div
                         role="alert"
-                        className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm"
+                        className="mb-4 rounded-xl border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 p-3 text-sm"
                       >
                         {persistenceStatus.local === 'error'
                           ? 'No se ha podido guardar en este dispositivo.'
-                          : 'No se ha confirmado el guardado en Firebase. Conservamos la copia local y reintentaremos la conexión.'}{' '}
+                          : mode === 'local'
+                            ? 'No se ha confirmado el guardado local. Tus cambios siguen pendientes.'
+                            : 'No se ha confirmado la sincronización. Conservamos tus cambios pendientes.'}{' '}
                         <span className="block text-xs">
                           {persistenceStatus.error}
                         </span>
-                      </p>
+                        <Button
+                          className="mt-3 min-h-11"
+                          variant="outline"
+                          onClick={() => void retrySync()}
+                          disabled={syncing}
+                        >
+                          {syncing ? 'Reintentando…' : 'Reintentar'}
+                        </Button>
+                      </div>
                     ) : null}
                     {!persistenceStatus.canEdit && !persistenceStatus.error ? (
                       <output className="mb-4 block text-sm text-muted-foreground">
-                        Conectando con Firebase. La copia local se muestra en
-                        modo lectura.
+                        {mode === 'local'
+                          ? 'Abriendo el guardado local…'
+                          : 'Conectando con tu cuenta. La copia local se muestra en modo lectura.'}
                       </output>
                     ) : null}
                     <ViewBoundary key={tab}>

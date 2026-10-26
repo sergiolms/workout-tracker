@@ -1,10 +1,17 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CloudCheck, LoaderCircle, Timer, Unplug, X } from 'lucide-react';
+import {
+  CloudCheck,
+  HardDrive,
+  LoaderCircle,
+  Timer,
+  Unplug,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { remainingRest, performanceTrend } from '@/lib/workout-experience';
-import type { PersistenceStatus } from '@/lib/persistence';
+import type { PersistenceStatus } from '@/lib/account-sync';
 import { useScreenWakeLock } from '@/hooks/use-screen-wake-lock';
 
 export function GhostPerformance({
@@ -194,23 +201,28 @@ export function SaveStatus({ status }: { status: PersistenceStatus }) {
     };
   }, []);
   const saving = status.local === 'saving' || status.cloud === 'pending';
-  const saved = status.cloud === 'synced' && status.local === 'saved';
+  const saved =
+    (status.cloud === 'synced' || status.cloud === 'local') &&
+    status.local === 'saved';
   const disconnected =
-    !online ||
+    (!online && !status.localOnly) ||
     Boolean(status.error) ||
     status.local === 'error' ||
     status.cloud === 'error';
-  const label = !online
-    ? 'Sin conexión'
-    : disconnected
-      ? 'Sin sincronizar'
-      : !status.canEdit
-        ? 'Conectando…'
-        : saving
-          ? 'Guardando…'
-          : saved
-            ? 'Sincronizado'
-            : 'Conectando…';
+  const label =
+    !online && !status.localOnly
+      ? 'Sin conexión'
+      : disconnected
+        ? 'Sin sincronizar'
+        : !status.canEdit
+          ? 'Conectando…'
+          : saving
+            ? 'Guardando…'
+            : saved
+              ? status.localOnly
+                ? 'Guardado en este dispositivo'
+                : 'Sincronizado'
+              : 'Conectando…';
   return (
     <output
       title={label}
@@ -219,7 +231,11 @@ export function SaveStatus({ status }: { status: PersistenceStatus }) {
       {disconnected ? (
         <Unplug aria-hidden="true" />
       ) : saved && status.canEdit && !saving ? (
-        <CloudCheck aria-hidden="true" />
+        status.localOnly ? (
+          <HardDrive aria-hidden="true" />
+        ) : (
+          <CloudCheck aria-hidden="true" />
+        )
       ) : (
         <LoaderCircle
           aria-hidden="true"

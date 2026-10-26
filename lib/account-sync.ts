@@ -1,3 +1,5 @@
+import { type QueryClient, queryOptions } from '@tanstack/react-query';
+import { createAccountQueryClient } from './account-query.ts';
 import { defaultState, type AppState } from './storage.ts';
 import {
   CloudConflict,
@@ -6,13 +8,18 @@ import {
 } from './cloud-records.ts';
 
 export type PersistenceStatus = {
+  localOnly?: boolean;
   local: 'saving' | 'saved' | 'error';
-  cloud: 'pending' | 'synced' | 'error';
+  cloud: 'pending' | 'synced' | 'local' | 'error';
   canEdit: boolean;
   error: string;
   conflicts?: FieldConflict[];
 };
-type Dependencies = {
+export type SyncDependencies = {
+  client?: QueryClient;
+  accountId?: string;
+  localOnly?: boolean;
+  dispose?: () => void;
   loadLocal: () => Promise<AppState | null>;
   saveLocal: (state: AppState) => Promise<void>;
   backup: (state: AppState, source: 'local' | 'cloud') => Promise<void>;
@@ -60,18 +67,26 @@ const connectionError = (error: unknown) => {
   ].includes(code);
 };
 
-export class WorkoutPersistence {
-  state: AppState = defaultState;
-  status: PersistenceStatus = {
-    local: 'saved',
-    cloud: 'pending',
-    canEdit: false,
-    error: '',
-  };
+export class AccountSync {
+  readonly client: QueryClient;
+  readonly accountId: string;
+  readonly stateKey: readonly string[];
+  readonly statusKey: readonly string[];
+  get state(): AppState {
+    return this.client.getQueryData<AppState>(this.stateKey) ?? defaultState;
+  }
+  private set state(value: AppState) {
+    if (this.active) this.client.setQueryData(this.stateKey, value);
+  }
+  get status(): PersistenceStatus {
+    return this.client.getQueryData<PersistenceStatus>(this.statusKey)!;
+  }
+  private set status(value: PersistenceStatus) {
+    if (this.active) this.client.setQueryData(this.statusKey, value);
+  }
   private active = true;
   private revision = 0;
   private localQueue: Promise<void> = Promise.resolve();
-  private running: Promise<void> | null = null;
   private reconciled = false;
   private pending = false;
   private cloudVersion: string | null = null;
@@ -81,27 +96,80 @@ export class WorkoutPersistence {
   private conflictRemote: AppState | null = null;
   private recovered: { base: AppState; state: AppState } | null = null;
   private pendingReadFailed = false;
-  private dependencies: Dependencies;
-  private listeners = new Set<() => void>();
-  private snapshot = { state: this.state, status: { ...this.status } };
-
-  getSnapshot = () => this.snapshot;
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  };
-
-  constructor(dependencies: Dependencies) {
+  private initialized = false;
+  private dependencies: SyncDependencies;
+  get canEdit() {
+    return this.active && this.status.canEdit;
+  }
+  constructor(dependencies: SyncDependencies) {
     this.dependencies = dependencies;
+    this.client = dependencies.client ?? createAccountQueryClient();
+    this.accountId = dependencies.accountId ?? crypto.randomUUID();
+    this.stateKey = ['account', this.accountId, 'state'];
+    this.statusKey = ['account', this.accountId, 'status'];
+    this.client.setQueryDefaults(this.statusKey, {
+      gcTime: Infinity,
+      structuralSharing: false,
+    });
+    this.client.setQueryData(this.stateKey, defaultState);
+    void this.client.invalidateQueries({
+      queryKey: this.stateKey,
+      exact: true,
+      refetchType: 'none',
+    });
+    this.status = {
+      local: 'saved',
+      cloud: 'pending',
+      canEdit: false,
+      error: '',
+      ...(dependencies.localOnly ? { localOnly: true } : {}),
+    };
+  }
+
+  queryOptions() {
+    return queryOptions({
+      queryKey: this.stateKey,
+      queryFn: async () => {
+        if (!this.initialized) await this.initialize();
+        await this.sync();
+        return this.state;
+      },
+      staleTime: Infinity,
+      gcTime: Infinity,
+      retry: false,
+      networkMode: 'always',
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    });
   }
 
   private emit() {
     if (!this.active) return;
-    this.snapshot = { state: this.state, status: { ...this.status } };
-    this.listeners.forEach((listener) => listener());
-    this.dependencies.onChange?.(this.state, this.snapshot.status);
+    this.status = {
+      ...this.status,
+      ...(this.dependencies.localOnly ? { localOnly: true } : {}),
+    };
+    this.dependencies.onChange?.(this.state, this.status);
+  }
+
+  private readCloud(target: 'current' | 'all') {
+    return this.client.query({
+      queryKey: ['account', this.accountId, 'read', target],
+      queryFn: async ({ signal }) => {
+        signal.throwIfAborted();
+        if (!this.active) throw Error('La cuenta activa ha cambiado.');
+        const value = await (target === 'all'
+          ? this.dependencies.loadFullCloud!()
+          : this.dependencies.loadCloud());
+        signal.throwIfAborted();
+        if (!this.active) throw Error('La cuenta activa ha cambiado.');
+        return value;
+      },
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+      networkMode: 'always',
+    });
   }
 
   private queueRemote(value: AppState) {
@@ -128,6 +196,7 @@ export class WorkoutPersistence {
   }
 
   async initialize() {
+    this.initialized = true;
     try {
       const local = await this.dependencies.loadLocal();
       if (!this.active) return;
@@ -202,43 +271,53 @@ export class WorkoutPersistence {
   }
 
   sync(): Promise<void> {
-    if (!this.active) return Promise.resolve();
-    if (this.status.conflicts?.length) return Promise.resolve();
-    if (this.running) return this.running;
+    if (!this.active || this.status.conflicts?.length) return Promise.resolve();
     if (
       this.reconciled &&
       !this.pending &&
       !this.incoming &&
-      this.status.cloud === 'synced'
+      (this.status.cloud === 'synced' || this.status.cloud === 'local')
     )
       return Promise.resolve();
-    this.running = this.synchronize().finally(() => {
-      this.running = null;
-      if (
-        (this.incoming || this.pending) &&
-        this.status.cloud !== 'error' &&
-        this.status.canEdit &&
-        !this.status.conflicts?.length
-      )
-        void this.sync();
+    const mutation = this.client.getMutationCache().build(this.client, {
+      mutationKey: ['account', this.accountId, 'save'],
+      scope: { id: `account:${this.accountId}` },
+      networkMode: 'always',
+      gcTime: Infinity,
+      retry: false,
+      mutationFn: () => this.synchronize(),
+      onSuccess: () => {
+        if (
+          this.active &&
+          (this.incoming || this.pending) &&
+          !this.status.conflicts?.length
+        )
+          void this.sync();
+      },
     });
-    return this.running;
+    return mutation
+      .execute(undefined)
+      .catch(() => undefined)
+      .finally(() => {
+        this.client.getMutationCache().remove(mutation);
+      });
   }
 
   private async synchronize() {
+    if (!this.active || this.status.conflicts?.length) return;
     try {
       if (this.pendingReadFailed) {
         this.recovered = (await this.dependencies.loadPending?.()) ?? null;
         this.pendingReadFailed = false;
       }
       if (!this.reconciled) {
-        let remote = await this.dependencies.loadCloud();
+        let remote = await this.readCloud('current');
         if (this.recovered && remote?.history && !remote.history.complete) {
           if (!this.dependencies.loadFullCloud)
             throw Error(
               'No se pueden reconciliar cambios pendientes con un historial incompleto.',
             );
-          remote = await this.dependencies.loadFullCloud();
+          remote = (await this.readCloud('all'))!;
         }
         if (!this.active) return;
         // Cache contents never become a cloud write on startup, even if the
@@ -295,7 +374,7 @@ export class WorkoutPersistence {
         !this.pending &&
         this.dependencies.subscribeCloud
       ) {
-        const remote = await this.dependencies.loadCloud();
+        const remote = await this.readCloud('current');
         if (remote) this.queueRemote(remote);
       }
       while (this.pending) {
@@ -339,7 +418,11 @@ export class WorkoutPersistence {
       this.localQueue = clear;
       await clear;
       if (!this.active) return;
-      this.status.cloud = this.pending ? 'pending' : 'synced';
+      this.status.cloud = this.pending
+        ? 'pending'
+        : this.dependencies.localOnly
+          ? 'local'
+          : 'synced';
       this.status.canEdit = true;
       this.status.error = '';
       this.emit();
@@ -356,6 +439,7 @@ export class WorkoutPersistence {
         this.conflictRemote = error.remote;
       }
       this.emit();
+      throw error;
     }
   }
 
@@ -393,7 +477,11 @@ export class WorkoutPersistence {
     await this.persist();
     this.status = {
       ...this.status,
-      cloud: this.pending ? 'pending' : 'synced',
+      cloud: this.pending
+        ? 'pending'
+        : this.dependencies.localOnly
+          ? 'local'
+          : 'synced',
       canEdit: true,
       error: '',
     };
@@ -401,6 +489,7 @@ export class WorkoutPersistence {
   }
 
   async resolveConflicts(choices: Record<string, 'local' | 'remote'>) {
+    if (!this.active) return;
     if (!this.conflictRemote || !this.status.conflicts?.length) return;
     const remote = this.conflictRemote;
     const merged = mergeStates(this.base, this.state, remote, choices);
@@ -429,6 +518,7 @@ export class WorkoutPersistence {
     await this.localQueue;
   }
   async hydrate(load: () => Promise<AppState>) {
+    if (!this.active) throw Error('La cuenta activa ha cambiado.');
     const remote = await load();
     if (!this.active) throw Error('La cuenta activa ha cambiado.');
     this.queueRemote(remote);
@@ -443,8 +533,9 @@ export class WorkoutPersistence {
     return this.state;
   }
   dispose() {
+    if (!this.active) return;
     this.active = false;
     this.stopListening?.();
-    this.listeners.clear();
+    this.dependencies.dispose?.();
   }
 }

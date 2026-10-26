@@ -1,225 +1,252 @@
 'use client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { skipToken, useIsMutating, useQuery } from '@tanstack/react-query';
+import { createAccountQueryClient } from '@/lib/account-query';
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
-import {
-  createFirebaseRepository,
   signInWithGoogle,
   signOutFirebase,
   subscribeToAuth,
   type FirebaseUser,
 } from '@/lib/firebase';
 import {
-  backupLocalState,
   clearAppLocalData,
   defaultState,
   loadLocalState,
-  loadPendingChanges,
-  savePendingChanges,
-  saveLocalState,
   type AppState,
 } from '@/lib/storage';
-import { WorkoutPersistence, type PersistenceStatus } from '@/lib/persistence';
-import { createWalkLog } from '@/lib/walk-log';
+import { AccountSync, type PersistenceStatus } from '@/lib/account-sync';
+import {
+  hasLocalData,
+  localImportSnapshot,
+  LOCAL_ACCOUNT_ID,
+} from '@/lib/local-repository';
+import {
+  createAccountSession,
+  createAccountRepository,
+} from '@/lib/account-session';
+import { useWalkTool } from '@/hooks/use-walk-tool';
 import type { HistorySource } from '@/lib/history-source';
 
+type AccessMode = 'choose' | 'local' | 'cloud';
+const ACCESS_KEY = 'zero-to-hero-access';
+const initialStatus: PersistenceStatus = {
+  local: 'saved',
+  cloud: 'pending',
+  canEdit: false,
+  error: '',
+};
+
 export function useWorkoutAccount() {
+  const [client] = useState(createAccountQueryClient);
+  const [mode, setMode] = useState<AccessMode>('choose');
+  const [modeReady, setModeReady] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
+  const [session, setSession] = useState<AccountSync | null>(null);
+  const sessionRef = useRef<AccountSync | null>(null);
   const [historySource, setHistorySource] = useState<HistorySource | null>(
     null,
   );
-  const [accountStore, setAccountStore] = useState<WorkoutPersistence | null>(
-    null,
-  );
   const [hydrated, setHydrated] = useState(false);
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
-  const loadSequence = useRef(0);
-  const persistence = useRef<WorkoutPersistence | null>(null);
-  const [fallbackStatus, setFallbackStatus] = useState<PersistenceStatus>({
-    local: 'saved',
-    cloud: 'pending',
-    canEdit: false,
-    error: '',
-  });
-  const subscribe = useCallback(
-    (listener: () => void) => accountStore?.subscribe(listener) ?? (() => {}),
-    [accountStore],
+  const [localImport, setLocalImport] = useState<AppState | null>(null);
+  const loginInProgress = useRef(false);
+  const firebaseUser = mode === 'cloud' ? authUser : null;
+  const activeAccountId =
+    mode === 'local'
+      ? LOCAL_ACCOUNT_ID
+      : mode === 'cloud' && authReady
+        ? (authUser?.uid ?? null)
+        : null;
+  const stateQuery = useQuery(
+    session
+      ? session.queryOptions()
+      : {
+          queryKey: ['account', 'none', 'state'],
+          queryFn: skipToken,
+          enabled: false,
+        },
+    client,
   );
-  const getSnapshot = useCallback(
-    () => accountStore?.getSnapshot() ?? null,
-    [accountStore],
+  const statusQuery = useQuery(
+    {
+      queryKey: session?.statusKey ?? ['account', 'none', 'status'],
+      queryFn: skipToken,
+      enabled: false,
+    },
+    client,
   );
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, () => null);
-  const state = snapshot?.state ?? defaultState;
-  const persistenceStatus = snapshot?.status ?? fallbackStatus;
+  const state = (stateQuery.data as AppState | undefined) ?? defaultState;
+  const persistenceStatus =
+    (statusQuery.data as PersistenceStatus | undefined) ?? initialStatus;
   const cloudReady = persistenceStatus.cloud === 'synced';
-  const syncing = persistenceStatus.local === 'saving';
-  const updateState = useCallback(
-    (updater: (state: AppState) => AppState) =>
-      persistence.current?.update(updater),
-    [],
+  const savingMutations = useIsMutating(
+    { mutationKey: ['account', session?.accountId ?? 'none', 'save'] },
+    client,
   );
+  const syncing = persistenceStatus.local === 'saving' || savingMutations > 0;
+  const updateState = useCallback(
+    (updater: (state: AppState) => AppState) => session?.update(updater),
+    [session],
+  );
+  const rememberMode = useCallback((value: AccessMode) => {
+    try {
+      localStorage.setItem(ACCESS_KEY, value);
+    } catch {
+      /* Session-only access remains available when browser storage is restricted. */
+    }
+    setMode(value);
+  }, []);
+
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let cancelled = false;
-    const initialize = async () => {
-      unsubscribe = await subscribeToAuth(async (user) => {
-        if (cancelled) return;
-        const sequence = ++loadSequence.current;
-        try {
-          setHydrated(false);
-          setAccountStore(null);
-          setHistorySource(null);
-          setFallbackStatus({
-            local: 'saved',
-            cloud: 'pending',
-            canEdit: false,
-            error: '',
-          });
-          persistence.current?.dispose();
-          persistence.current = null;
-          setFirebaseUser(user);
-          if (!user || user.isAnonymous) {
-            if (cancelled || sequence !== loadSequence.current) return;
-            setHydrated(true);
-            return;
-          }
-          const repository = createFirebaseRepository(user.uid);
-          const store = new WorkoutPersistence({
-            loadLocal: () => loadLocalState(user.uid),
-            saveLocal: (value) => saveLocalState(value, user.uid),
-            backup: (value, source) =>
-              backupLocalState(value, user.uid, source),
-            loadCloud: repository.load,
-            loadFullCloud: repository.loadAll,
-            saveCloud: repository.save,
-            subscribeCloud: repository.subscribe,
-            loadPending: () => loadPendingChanges(user.uid),
-            savePending: (pending) => savePendingChanges(user.uid, pending),
-          });
-          persistence.current = store;
-          setHistorySource({
-            loadMonth: (month) =>
-              store.hydrate(() => repository.loadMonth(month)),
-            loadAll: async () => {
-              const full = await store.hydrate(repository.loadAll);
-              if (!full.history?.complete)
-                throw Error(
-                  'Resuelve la sincronización antes de descargar todos los registros.',
-                );
-              return full;
-            },
-          });
-          setAccountStore(store);
-          await store.initialize();
-          if (cancelled || sequence !== loadSequence.current) {
-            store.dispose();
-            return;
-          }
-          setHydrated(true);
-          void store.sync();
-        } catch (reason) {
-          if (cancelled || sequence !== loadSequence.current) return;
-          const error =
-            reason instanceof Error
-              ? reason.message
-              : 'No se pudo cargar la cuenta.';
-          setAuthError(error);
-          setFallbackStatus({
-            local: 'saved',
-            cloud: 'error',
-            canEdit: false,
-            error,
-          });
-          setHydrated(true);
-        }
-      });
-      if (cancelled) unsubscribe();
+    client.mount();
+    let active = true;
+    const readMode = async () => {
+      await Promise.resolve();
+      if (!active) return;
+      try {
+        const stored = localStorage.getItem(ACCESS_KEY);
+        if (stored === 'local' || stored === 'cloud') setMode(stored);
+      } catch {
+        /* Access can still be chosen for the current session. */
+      }
+      setModeReady(true);
     };
-    void initialize().catch((error) => {
+    void readMode();
+    return () => {
+      active = false;
+      client.unmount();
+      client.clear();
+    };
+  }, [client]);
+
+  useEffect(() => {
+    if (!modeReady || mode !== 'cloud') return;
+    let active = true;
+    let stop: (() => void) | undefined;
+    void subscribeToAuth((user) => {
+      if (!active) return;
+      setAuthUser(user?.isAnonymous ? null : user);
+      setAuthReady(true);
+      if (user && !user.isAnonymous && !loginInProgress.current) {
+        let stayOnAccessScreen = false;
+        try {
+          stayOnAccessScreen = localStorage.getItem(ACCESS_KEY) === 'choose';
+        } catch {
+          /* The current session can still connect explicitly. */
+        }
+        if (!stayOnAccessScreen)
+          setMode((current) => (current === 'local' ? current : 'cloud'));
+      }
+    })
+      .then((unsubscribe) => {
+        if (active) stop = unsubscribe;
+        else unsubscribe();
+      })
+      .catch((error) => {
+        if (!active) return;
+        setAuthReady(true);
+        setAuthError(
+          error instanceof Error
+            ? error.message
+            : 'No se pudo conectar con la cuenta.',
+        );
+      });
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, [mode, modeReady]);
+
+  useEffect(() => {
+    if (!modeReady) return;
+
+    let active = true;
+    let store: AccountSync | null = null;
+    let retry: (() => void) | undefined;
+    const open = async () => {
+      const previous = sessionRef.current;
+      await previous?.flushLocal();
+      if (!active) return;
+      previous?.dispose();
+      sessionRef.current = null;
+      setSession(null);
+      setHistorySource(null);
+      setHydrated(false);
+      client.clear();
+      if (!activeAccountId) {
+        setHydrated(true);
+        return;
+      }
+      const localOnly = mode === 'local';
+      const uid = activeAccountId;
+      const repository = createAccountRepository(localOnly, uid);
+      store = createAccountSession(client, uid, localOnly, repository);
+      const opened = store;
+      sessionRef.current = opened;
+      setSession(store);
+      setHistorySource({
+        accountId: uid,
+        client,
+        loadMonth: (month) => opened.hydrate(() => repository.loadMonth(month)),
+        loadAll: async () => {
+          const full = await opened.hydrate(repository.loadAll);
+          if (full.history && !full.history.complete)
+            throw Error(
+              'Resuelve la sincronización antes de descargar todos los registros.',
+            );
+          return full;
+        },
+      });
+      setHydrated(true);
+      retry = () => {
+        void store?.sync();
+      };
+      window.addEventListener('online', retry);
+    };
+    void open().catch((error) => {
+      if (!active) return;
       setAuthError(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo conectar con Firebase.',
+        error instanceof Error ? error.message : 'No se pudo abrir el diario.',
       );
       setHydrated(true);
     });
-    const retry = () => {
-      void persistence.current?.sync();
-    };
-    const timer = window.setInterval(retry, 30_000);
-    window.addEventListener('online', retry);
     return () => {
-      cancelled = true;
-      unsubscribe?.();
-      persistence.current?.dispose();
-      window.clearInterval(timer);
-      window.removeEventListener('online', retry);
+      active = false;
+      store?.dispose();
+      if (retry) window.removeEventListener('online', retry);
     };
-  }, []);
-  useEffect(() => {
-    if (!firebaseUser || firebaseUser.isAnonymous) return;
-    const context = (
-      document as Document & {
-        modelContext?: {
-          registerTool: (
-            tool: unknown,
-            options?: { signal: AbortSignal },
-          ) => void | Promise<void>;
-        };
-      }
-    ).modelContext;
-    if (!context?.registerTool) return;
-    const lifecycle = new AbortController();
-    const accountSequence = loadSequence.current;
-    void Promise.resolve(
-      context.registerTool(
-        {
-          name: 'log_walk',
-          title: 'Registrar caminata',
-          description:
-            'Registra una caminata con minutos y pasos en Zero to Hero.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              minutes: { type: 'number', minimum: 1, maximum: 1440 },
-              steps: { type: 'integer', minimum: 0, maximum: 1e7 },
-            },
-            required: ['minutes', 'steps'],
-            additionalProperties: false,
-          },
-          annotations: { readOnlyHint: false, untrustedContentHint: false },
-          execute: (input: unknown) => {
-            if (
-              accountSequence !== loadSequence.current ||
-              !persistence.current?.status.canEdit
-            )
-              throw new Error(
-                'Conecta con Firebase antes de registrar una caminata.',
-              );
-            const log = createWalkLog(input);
-            updateState((current) => ({
-              ...current,
-              cardioLogs: [...current.cardioLogs, log],
-            }));
-            return { status: 'pending', id: log.id };
-          },
-        },
-        { signal: lifecycle.signal },
-      ),
-    ).catch(() => undefined);
-    return () => lifecycle.abort();
-  }, [firebaseUser, updateState]);
-  const handleGoogleLogin = async () => {
+  }, [mode, modeReady, activeAccountId, client]);
+
+  useWalkTool(session, hydrated, updateState);
+  const handleUseLocal = async () => {
     setAuthBusy(true);
     setAuthError('');
     try {
-      await signInWithGoogle();
+      await sessionRef.current?.flushLocal();
+      rememberMode('local');
+    } catch {
+      setAuthError('No se han terminado de guardar los cambios.');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+  const handleGoogleLogin = async () => {
+    setAuthBusy(true);
+    setAuthError('');
+    loginInProgress.current = true;
+    try {
+      await sessionRef.current?.flushLocal();
+      const user = await signInWithGoogle();
+      const local =
+        mode === 'local' && sessionRef.current?.accountId === LOCAL_ACCOUNT_ID
+          ? sessionRef.current.state
+          : await loadLocalState();
+      setAuthUser(user);
+      setAuthReady(true);
+      setLocalImport(hasLocalData(local) ? localImportSnapshot(local) : null);
+      rememberMode('cloud');
     } catch (error) {
       const code =
         typeof error === 'object' && error && 'code' in error
@@ -228,44 +255,47 @@ export function useWorkoutAccount() {
       setAuthError(
         code.includes('popup-closed')
           ? 'Se cerró la ventana antes de completar el acceso.'
-          : code.includes('unauthorized-domain')
-            ? 'Añade este dominio a los dominios autorizados de Firebase.'
-            : 'No se pudo iniciar sesión. Inténtalo de nuevo.',
+          : 'No se pudo conectar la cuenta. Inténtalo de nuevo.',
       );
     } finally {
+      loginInProgress.current = false;
       setAuthBusy(false);
     }
   };
   const handleLogout = async () => {
     setAuthBusy(true);
     setAuthError('');
-    setHydrated(false);
     try {
-      await persistence.current?.flushLocal();
-      await signOutFirebase();
-      try {
-        await clearAppLocalData();
-      } catch {
-        setAuthError(
-          'Sesión cerrada, pero no se pudieron borrar los borradores.',
-        );
-      }
+      await sessionRef.current?.flushLocal();
+      if (mode === 'cloud') await signOutFirebase();
+      setLocalImport(null);
+      setAuthUser(null);
+      rememberMode('choose');
+      await clearAppLocalData();
     } catch {
-      setAuthError('No se pudo cerrar la sesión.');
-      setHydrated(true);
+      setAuthError(
+        'No se pudo salir. Tus datos se conservan en este dispositivo.',
+      );
     } finally {
       setAuthBusy(false);
     }
   };
   const resolveConflicts = useCallback(
     (choices: Record<string, 'local' | 'remote'>) =>
-      persistence.current?.resolveConflicts(choices) ?? Promise.resolve(),
-    [],
+      session?.resolveConflicts(choices) ?? Promise.resolve(),
+    [session],
   );
   return {
     historySource,
     state,
-    hydrated,
+    hydrated:
+      modeReady &&
+      (mode !== 'cloud' || authReady) &&
+      hydrated &&
+      (!activeAccountId ||
+        (session?.accountId === activeAccountId && !stateQuery.isFetching)),
+    mode,
+    accountId: session?.accountId ?? '',
     cloudReady,
     syncing,
     firebaseUser,
@@ -273,8 +303,12 @@ export function useWorkoutAccount() {
     authError,
     persistenceStatus,
     updateState,
+    handleUseLocal,
     handleGoogleLogin,
     handleLogout,
     resolveConflicts,
+    retrySync: () => session?.sync(),
+    localImport,
+    dismissLocalImport: () => setLocalImport(null),
   };
 }

@@ -389,6 +389,39 @@ export function loadLocalState(uid?: string): Promise<AppState | null> {
   return readState(localKey(uid));
 }
 
+export async function updateLocalState(
+  update: (state: AppState | null) => AppState,
+  uid?: string,
+): Promise<AppState> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(localKey(uid));
+    let next: AppState;
+    let failure: unknown;
+    request.onsuccess = () => {
+      try {
+        next = update(migrateState(request.result ?? null));
+        store.put(next, localKey(uid));
+      } catch (error) {
+        failure = error;
+        tx.abort();
+      }
+    };
+    tx.oncomplete = () => {
+      db.close();
+      resolve(next);
+    };
+    tx.onerror = tx.onabort = () => {
+      db.close();
+      reject(
+        failure ?? tx.error ?? Error('No se pudo guardar en este dispositivo.'),
+      );
+    };
+  });
+}
+
 export async function saveLocalState(
   state: AppState,
   uid?: string,

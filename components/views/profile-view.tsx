@@ -4,6 +4,7 @@ import {
   Cloud,
   CloudOff,
   Download,
+  HardDrive,
   LogOut,
   Moon,
   Monitor,
@@ -172,9 +173,9 @@ export function ProfileView({
                     <Cloud />
                   </span>
                   <div>
-                    <strong className="block">Cuenta</strong>
+                    <strong className="block">Sólo en este dispositivo</strong>
                     <small className="text-muted-foreground">
-                      Inicia sesión para sincronizar entre dispositivos.
+                      Conecta una cuenta para sincronizar entre dispositivos.
                     </small>
                   </div>
                 </div>
@@ -186,7 +187,15 @@ export function ProfileView({
                   <span className="grid size-6 place-items-center rounded-full bg-white text-base font-black text-blue-600">
                     G
                   </span>
-                  {authBusy ? 'Conectando…' : 'Continuar con Google'}
+                  {authBusy ? 'Conectando…' : 'Sincronizar con una cuenta'}
+                </Button>
+                <Button
+                  className="mt-3 min-h-11 w-full"
+                  variant="ghost"
+                  disabled={authBusy}
+                  onClick={onLogout}
+                >
+                  Cambiar modo de acceso
                 </Button>
                 {authError ? (
                   <p
@@ -203,23 +212,21 @@ export function ProfileView({
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="icon-tile">
-                  {user && cloudReady ? <Cloud /> : <CloudOff />}
+                  {user ? cloudReady ? <Cloud /> : <CloudOff /> : <HardDrive />}
                 </span>
                 <div>
-                  <strong className="block">Sincronización</strong>
+                  <strong className="block">{user ? 'Sincronización' : 'Guardado local'}</strong>
                   <small className="text-muted-foreground">
                     {user && cloudReady
                       ? 'Sincronizado con la cuenta activa'
                       : user
-                        ? 'Firebase pendiente · copia local disponible'
-                        : firebaseConfigured
-                          ? 'Solo en este dispositivo hasta iniciar sesión'
-                          : 'Sincronización no disponible'}
+                        ? 'Cambios pendientes de sincronizar'
+                        : 'Guardado local. Exporta una copia antes de borrar los datos del navegador.'}
                   </small>
                 </div>
               </div>
               <span
-                className={`size-2.5 rounded-full ${user && cloudReady ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                className={`size-2.5 rounded-full ${(user && cloudReady) || (!user && editable) ? 'bg-primary' : 'bg-[var(--warning)]'}`}
               />
             </div>
           </section>

@@ -19,7 +19,7 @@ import { firebaseRecordDatabase } from '../lib/firebase.ts';
 import { CloudRepository } from '../lib/cloud-repository.ts';
 import { PagedCloudRepository } from '../lib/paged-cloud-repository.ts';
 import { historyTotals } from '../lib/history-summary.ts';
-import { WorkoutPersistence } from '../lib/persistence.ts';
+import { AccountSync } from '../lib/account-sync.ts';
 import { CloudConflict } from '../lib/cloud-records.ts';
 import { defaultState } from '../lib/storage.ts';
 import { moveToTrash, restoreDeleted } from '../lib/record-trash.ts';
@@ -115,7 +115,7 @@ test('dos clientes paginados mantienen la actualización optimista al hidratar o
       })),
     );
     const events = [];
-    const store = new WorkoutPersistence({
+    const store = new AccountSync({
       loadLocal: async () => null,
       saveLocal: async () => {},
       backup: async () => {},

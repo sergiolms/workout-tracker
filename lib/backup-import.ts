@@ -8,6 +8,7 @@ const historyKeys = [
   'measurements',
   'trash',
 ] as const;
+const membershipKeys = ['mobilityDone', 'warmupDone', 'classes'] as const;
 const fail = (message: string): never => {
   throw Error(`Copia no válida: ${message}`);
 };
@@ -290,7 +291,7 @@ export function parseBackup(text: string): AppState {
 }
 
 export function backupPreview(current: AppState, incoming: AppState) {
-  return historyKeys.map((key) => {
+  const records = historyKeys.map((key) => {
     const existing = new Map(
       (current[key] ?? []).map((item) => [item.id, item]),
     );
@@ -307,6 +308,19 @@ export function backupPreview(current: AppState, incoming: AppState) {
       duplicates: (incoming[key] ?? []).length - additions - conflicts,
     };
   });
+  return [
+    ...records,
+    ...membershipKeys.map((key) => {
+      const existing = new Set(current[key]);
+      const entries = [...new Set(incoming[key])];
+      return {
+        key,
+        additions: entries.filter((entry) => !existing.has(entry)).length,
+        duplicates: entries.filter((entry) => existing.has(entry)).length,
+        conflicts: 0,
+      };
+    }),
+  ];
 }
 
 export function importBackup(
@@ -315,6 +329,8 @@ export function importBackup(
   options: { includePlan: boolean; replaceConflicts: boolean },
 ): AppState {
   const result = { ...current };
+  for (const key of membershipKeys)
+    result[key] = [...new Set([...current[key], ...incoming[key]])];
   for (const key of historyKeys) {
     const merged = new Map<string, unknown>(
       (current[key] ?? []).map((item) => [item.id, item]),
