@@ -5,6 +5,7 @@ export type Exercise = {
   mode?: 'reps' | 'time';
   targetSeconds?: number;
   loadKind?: 'total' | 'perHand' | 'added' | 'assistance' | 'none';
+  progression?: 'off' | 'double';
   name: string;
   target: string;
   sets: number;

@@ -36,6 +36,7 @@ const string = (value: unknown) =>
   typeof value === 'string' && value.length <= 10000;
 
 function validateExerciseMetadata(value: Record<string, unknown>) {
+  if (value.progression !== undefined && value.progression !== 'off' && value.progression !== 'double') fail('política de progresión incorrecta.');
   if (value.mode !== undefined && (typeof value.mode !== 'string' || !['reps', 'time'].includes(value.mode))) fail('modalidad de ejercicio incorrecta.');
   if (value.loadKind !== undefined && (typeof value.loadKind !== 'string' || !['total', 'perHand', 'added', 'assistance', 'none'].includes(value.loadKind))) fail('criterio de carga incorrecto.');
   if (value.targetSeconds !== undefined && !number(value.targetSeconds, 1, 86400)) fail('tiempo objetivo incorrecto.');
