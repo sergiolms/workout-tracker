@@ -38,6 +38,7 @@ import { ViewTabs } from '@/components/view-tabs';
 import { Stepper } from '@/components/number-stepper';
 import { uid } from '@/lib/local-date';
 import { SessionBuilder } from '@/components/plan/session-builder';
+import { PlanSharing } from '@/components/plan/plan-sharing';
 
 export function PlanView({
   state,
@@ -252,6 +253,7 @@ export function PlanView({
           { id: 'structure', label: 'Tramos' },
         ]}
       />
+      {view === 'routines' ? <PlanSharing state={state} updateState={updateState} /> : null}
       <Dialog
         open={planNameDraft !== null}
         onOpenChange={(open) => {

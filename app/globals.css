@@ -4,6 +4,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.base-print-root { display: none; }
+@media print {
+  body > *:not(.base-print-root) { display: none !important; }
+  .base-print-root { display: block; background: white; color: black; font: 12pt/1.6 system-ui, sans-serif; padding: 1cm; }
+  .base-print-root section { break-inside: avoid; margin-top: 1cm; }
+  .base-print-root h1 { font-size: 24pt; font-weight: 800; }
+  .base-print-root h2 { font-size: 18pt; font-weight: 700; }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
