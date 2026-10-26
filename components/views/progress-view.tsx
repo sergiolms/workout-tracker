@@ -37,6 +37,7 @@ import { RecordTrash } from '@/components/record-trash';
 import { WorkoutHistoryEditor } from '@/components/workout-history-editor';
 import { ProgressRing } from '@/components/progress-ring';
 import { ExerciseProgress } from '@/components/exercise-history';
+import { WeeklyTrainingVolume } from '@/components/weekly-training-volume';
 
 export function ProgressView({
   editable,
@@ -154,6 +155,7 @@ export function ProgressView({
             onWorkoutSelect={setEditingWorkout}
             onActivitySelect={setEditingActivity}
           />
+          <WeeklyTrainingVolume state={state} />
           <section className="surface mt-4 flex items-center gap-4 p-5">
             <ProgressRing
               className="size-16 text-base"
