@@ -1,0 +1,168 @@
+{
+  "version": "1",
+  "dailyCredits": 30,
+  "weeklyBonus": 30,
+  "weeklyCap": 150,
+  "qualifyingDayUnits": 0.5,
+  "activityMinutesForFullDay": 20,
+  "mobilityMovementsForFullDay": 4,
+  "startingCredits": 0,
+  "items": [
+    {
+      "id": "plant",
+      "name": "Planta",
+      "price": 20,
+      "kind": "decoration"
+    },
+    {
+      "id": "clock",
+      "name": "Reloj",
+      "price": 30,
+      "kind": "decoration"
+    },
+    {
+      "id": "poster",
+      "name": "Lámina",
+      "price": 40,
+      "kind": "decoration"
+    },
+    {
+      "id": "water",
+      "name": "Dispensador de agua",
+      "price": 45,
+      "kind": "decoration"
+    },
+    {
+      "id": "mirror",
+      "name": "Espejo",
+      "price": 60,
+      "kind": "decoration"
+    },
+    {
+      "id": "lighting",
+      "name": "Iluminación",
+      "price": 80,
+      "kind": "decoration"
+    },
+    {
+      "id": "mat",
+      "name": "Variante de esterilla",
+      "price": 40,
+      "kind": "equipment"
+    },
+    {
+      "id": "kettlebells",
+      "name": "Juego de kettlebells",
+      "price": 90,
+      "kind": "equipment"
+    },
+    {
+      "id": "bench",
+      "name": "Banco ajustable",
+      "price": 150,
+      "kind": "equipment"
+    },
+    {
+      "id": "dumbbell-rack",
+      "name": "Mancuernero",
+      "price": 180,
+      "kind": "equipment"
+    },
+    {
+      "id": "platform",
+      "name": "Plataforma",
+      "price": 240,
+      "kind": "equipment"
+    },
+    {
+      "id": "rack",
+      "name": "Rack",
+      "price": 300,
+      "kind": "equipment"
+    },
+    {
+      "id": "bike",
+      "name": "Bicicleta",
+      "price": 360,
+      "kind": "equipment"
+    },
+    {
+      "id": "cable",
+      "name": "Estación de poleas",
+      "price": 420,
+      "kind": "equipment"
+    },
+    {
+      "id": "treadmill",
+      "name": "Cinta de correr",
+      "price": 480,
+      "kind": "equipment"
+    },
+    {
+      "id": "rubber-floor",
+      "name": "Variante de suelo de goma",
+      "price": 90,
+      "kind": "finish"
+    },
+    {
+      "id": "brick-wall",
+      "name": "Pared de ladrillo",
+      "price": 100,
+      "kind": "finish"
+    },
+    {
+      "id": "wood-floor",
+      "name": "Suelo de madera",
+      "price": 140,
+      "kind": "finish"
+    },
+    {
+      "id": "wood-wall",
+      "name": "Paneles de madera",
+      "price": 160,
+      "kind": "finish"
+    },
+    {
+      "id": "expansion-1",
+      "name": "Primera ampliación",
+      "price": 400,
+      "kind": "expansion"
+    },
+    {
+      "id": "expansion-2",
+      "name": "Segunda ampliación",
+      "price": 900,
+      "kind": "expansion"
+    },
+    {
+      "id": "second-room",
+      "name": "Segunda sala",
+      "price": 1800,
+      "kind": "expansion"
+    },
+    {
+      "id": "trophy-cabinet",
+      "name": "Vitrina de trofeos",
+      "price": 120,
+      "kind": "decoration"
+    },
+    {
+      "id": "outfit-ocean",
+      "name": "Conjunto océano",
+      "price": 30,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-clay",
+      "name": "Conjunto arcilla",
+      "price": 60,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-night",
+      "name": "Conjunto noche",
+      "price": 90,
+      "kind": "apparel"
+    }
+  ]
+}

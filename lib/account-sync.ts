@@ -1,5 +1,6 @@
 import { type QueryClient, queryOptions } from '@tanstack/react-query';
 import { createAccountQueryClient } from './account-query.ts';
+import { accrueGym } from './gym/engine.ts';
 import { defaultState, type AppState } from './storage.ts';
 import {
   CloudConflict,
@@ -219,7 +220,7 @@ export class AccountSync {
 
   update(updater: (current: AppState) => AppState) {
     if (!this.active || !this.status.canEdit) return;
-    const next = updater(this.state);
+    const next = accrueGym(this.state, updater(this.state));
     if (next === this.state) return;
     this.revision++;
     const updatedAt = new Date(

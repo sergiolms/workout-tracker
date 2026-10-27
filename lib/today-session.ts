@@ -63,7 +63,11 @@ export function buildWorkoutReview(
         currentExerciseLog,
       ]
     : routineLogs;
+  const plannedSets = state.activeWorkouts?.find(
+    (item) => item.id === identity.id,
+  )?.plannedSets;
   const workout: WorkoutLog = {
+    ...(plannedSets ? { gymTargetSets: plannedSets } : {}),
     ...(state.rotation ? { rotationId: state.rotation.id } : {}),
     id: identity.id,
     date,

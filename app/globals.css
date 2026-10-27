@@ -606,3 +606,8 @@ summary[data-feedback-pressed="true"] {
 .catalog-section-title { display: flex; align-items: end; height: 40px; padding-block: 8px; color: var(--primary); font-size: 14px; font-weight: 700; }
 .catalog-exercise-row { border-bottom: 1px solid var(--border); }
 .catalog-exercise-row strong { font-weight: 600; }
+
+.profile-achievement-progress { appearance: none; border: 0; border-radius: 1rem; overflow: hidden; background: var(--muted); }
+.profile-achievement-progress::-webkit-progress-bar { background: var(--muted); border-radius: 1rem; }
+.profile-achievement-progress::-webkit-progress-value { background: var(--primary); border-radius: 1rem; }
+.profile-achievement-progress::-moz-progress-bar { background: var(--primary); border-radius: 1rem; }
