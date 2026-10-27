@@ -1,3 +1,4 @@
+import { gymRotations } from '../lib/gym/orientation';
 import { AvatarFigure } from '../components/gym/avatar-figure';
 import { defaultAvatar, avatarHairstyles } from '../lib/gym/appearance';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -196,18 +197,14 @@ export const RotationReview: Story = {
         >
           <h2 className="mb-3 text-sm font-semibold">{item.name}</h2>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <GymItemPreview item={item} />
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                Original
-              </p>
-            </div>
-            <div>
-              <GymItemPreview item={item} rotated />
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                Girado
-              </p>
-            </div>
+            {gymRotations.map((rotation) => (
+              <div key={rotation}>
+                <GymItemPreview item={item} rotation={rotation} />
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  {rotation}°
+                </p>
+              </div>
+            ))}
           </div>
         </section>
       ))}

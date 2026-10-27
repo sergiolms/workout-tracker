@@ -1,4 +1,5 @@
 'use client';
+import { rotatePlacement } from '@/lib/gym/orientation';
 import './gym.css';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useMutation } from '@tanstack/react-query';
@@ -193,7 +194,7 @@ export function GymApp({
   const rotateObject = async () => {
     if (!gym || !selected || !position || !canSave) return;
     const previous = gym.placements[selected] ?? null;
-    const rotated = { ...position, rotated: !position.rotated };
+    const rotated = rotatePlacement(position);
     const error = placementError(gym, selected, rotated);
     setPlacementMessage(error);
     if (error) return;

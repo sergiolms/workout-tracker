@@ -1,4 +1,5 @@
 import type { GymPlacement } from './types.ts';
+import { placementSize } from './orientation.ts';
 
 export function draggedPlacement(
   start: GymPlacement,
@@ -8,8 +9,7 @@ export function draggedPlacement(
   width: number,
   depth: number,
 ): GymPlacement {
-  const w = start.rotated ? depth : width;
-  const d = start.rotated ? width : depth;
+  const { width: w, depth: d } = placementSize({ width, depth }, start);
   return {
     ...start,
     x: Math.max(

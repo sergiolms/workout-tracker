@@ -233,15 +233,15 @@ test('the actual app opens a separate gym from Profile, persists purchases local
     await settle(
       () =>
         [...document.querySelectorAll('button')].some(
-          (el) => el.textContent.trim() === 'Girar',
+          (el) => el.textContent.trim() === 'Girar 90°',
         ),
       'inventory object selected',
     );
-    await click('Girar');
+    await click('Girar 90°');
     await settle(
       () =>
         [...document.querySelectorAll('button')].find(
-          (el) => el.textContent.trim() === 'Girar',
+          (el) => el.textContent.trim() === 'Girar 90°',
         )?.disabled === false,
       'rotation completed',
     );
@@ -252,6 +252,27 @@ test('the actual app opens a separate gym from Profile, persists purchases local
       true,
       'rotation saves without a Done button',
     );
+    for (const rotation of [180, 270, 0, 90]) {
+      await click('Girar 90°');
+      await settle(
+        () =>
+          document.querySelector(
+            `.gym-scene-object[aria-pressed="true"] .gym-furniture[data-rotation="${rotation}"]`,
+          ),
+        `preview turns to ${rotation} degrees`,
+      );
+      await settle(
+        () =>
+          [...document.querySelectorAll('button')].find(
+            (el) => el.textContent.trim() === 'Girar 90°',
+          )?.disabled === false,
+        'turn saved',
+      );
+      assert.equal(
+        (await storage.loadLocalState()).gym.placements[purchaseId].rotation,
+        rotation,
+      );
+    }
     await act(async () =>
       document
         .querySelector('h1')
@@ -261,7 +282,7 @@ test('the actual app opens a separate gym from Profile, persists purchases local
     );
     assert.equal(
       [...document.querySelectorAll('button')].some(
-        (el) => el.textContent.trim() === 'Girar',
+        (el) => el.textContent.trim() === 'Girar 90°',
       ),
       false,
       'outside click closes selection',

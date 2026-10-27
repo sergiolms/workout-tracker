@@ -11,6 +11,8 @@ export type GymPlacement = {
   x: number;
   y: number;
   rotated: boolean;
+  /** Absent in older saves: rotated=false maps to 0°, true to 90°. */
+  rotation?: 0 | 90 | 180 | 270;
 };
 export type GymPurchase = {
   id: string;

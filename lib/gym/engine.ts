@@ -6,6 +6,7 @@ import {
   type GymAvatar,
 } from './appearance.ts';
 import type { AppState } from '../storage.ts';
+import { gymRotations, placementSize } from './orientation.ts';
 import { equal } from '../cloud-records.ts';
 import {
   gymCatalog,
@@ -548,15 +549,17 @@ export function placementError(
 ) {
   if (
     !['main', 'annex'].includes(placement.room) ||
-    typeof placement.rotated !== 'boolean'
+    typeof placement.rotated !== 'boolean' ||
+    (placement.rotation !== undefined &&
+      (!gymRotations.includes(placement.rotation) ||
+        placement.rotated !== (placement.rotation % 180 !== 0)))
   )
     return 'Posición incorrecta.';
   const owned = ownedItems(gym).find((entry) => entry.id === id);
   if (!owned || !['equipment', 'decoration'].includes(owned.item.kind))
     return 'Este objeto no se puede colocar.';
   const size = roomSize(gym, placement.room);
-  const width = placement.rotated ? owned.item.depth : owned.item.width;
-  const depth = placement.rotated ? owned.item.width : owned.item.depth;
+  const { width, depth } = placementSize(owned.item, placement);
   if (
     !Number.isInteger(placement.x) ||
     !Number.isInteger(placement.y) ||
@@ -570,8 +573,7 @@ export function placementError(
     if (other.id === id) continue;
     const location = gym.placements[other.id];
     if (!location || location.room !== placement.room) continue;
-    const w = location.rotated ? other.item.depth : other.item.width,
-      d = location.rotated ? other.item.width : other.item.depth;
+    const { width: w, depth: d } = placementSize(other.item, location);
     if (
       placement.x < location.x + w &&
       placement.x + width > location.x &&

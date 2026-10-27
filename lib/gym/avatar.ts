@@ -1,3 +1,4 @@
+import { furniturePoint, placementSize } from './orientation.ts';
 import type { GymItem } from './catalog.ts';
 import type { GymPlacement } from './types.ts';
 import type { GymState } from './types.ts';
@@ -15,8 +16,7 @@ export function surfaceElevation(gym: GymState, room: string, cell: Cell) {
   for (const entry of ownedItems(gym)) {
     const place = gym.placements[entry.id];
     if (!place || place.room !== room || !isWalkableItem(entry.item)) continue;
-    const width = place.rotated ? entry.item.depth : entry.item.width,
-      depth = place.rotated ? entry.item.width : entry.item.depth;
+    const { width, depth } = placementSize(entry.item, place);
     if (
       cell.x >= place.x &&
       cell.x < place.x + width &&
@@ -67,10 +67,8 @@ function itemPoint(
   x: number,
   y: number,
 ): Cell {
-  return {
-    x: place.x + (place.rotated ? item.depth - y : x) - 0.5,
-    y: place.y + (place.rotated ? x : y) - 0.5,
-  };
+  const [worldX, worldY] = furniturePoint(item, place, [x, y]);
+  return { x: worldX - 0.5, y: worldY - 0.5 };
 }
 export function planGymInteraction(
   gym: GymState,
@@ -87,8 +85,7 @@ export function planGymInteraction(
     const target = targets[(step + attempt) % targets.length],
       place = gym.placements[target.id],
       item = target.item;
-    const width = place.rotated ? item.depth : item.width,
-      depth = place.rotated ? item.width : item.depth;
+    const { width, depth } = placementSize(item, place);
     const candidates = free.filter((p) =>
       isWalkableItem(item)
         ? p.x >= place.x &&
@@ -143,8 +140,7 @@ export function walkableGym(gym: GymState, room: string): Cell[] {
   for (const entry of ownedItems(gym)) {
     const p = gym.placements[entry.id];
     if (!p || p.room !== room || isWalkableItem(entry.item)) continue;
-    const w = p.rotated ? entry.item.depth : entry.item.width,
-      d = p.rotated ? entry.item.width : entry.item.depth;
+    const { width: w, depth: d } = placementSize(entry.item, p);
     for (let x = p.x; x < p.x + w; x++)
       for (let y = p.y; y < p.y + d; y++) blocked.add(`${x}:${y}`);
   }

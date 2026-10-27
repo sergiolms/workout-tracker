@@ -3,6 +3,7 @@ import { RotateCw, Package, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { GymItem } from '@/lib/gym/catalog';
 import type { GymPlacement } from '@/lib/gym/types';
+import { placementRotation } from '@/lib/gym/orientation';
 
 export function PlacementEditor({
   item,
@@ -38,8 +39,13 @@ export function PlacementEditor({
           className="min-h-11"
           onClick={onRotate}
         >
-          <RotateCw /> Girar
+          <RotateCw /> Girar 90°
         </Button>
+        {position ? (
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {placementRotation(position)}°
+          </span>
+        ) : null}
         <Button
           variant="ghost"
           className="min-h-11"

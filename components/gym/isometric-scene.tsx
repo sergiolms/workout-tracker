@@ -1,7 +1,26 @@
 'use client';
 import { AvatarFigure, useGymCharacter } from './gym-character';
 import { avatarOutfits, defaultAvatar } from '@/lib/gym/appearance';
-import { useId } from 'react';
+import {
+  useId,
+  memo,
+  Fragment,
+  Children,
+  isValidElement,
+  cloneElement,
+  type ReactNode,
+  type ReactElement,
+} from 'react';
+import {
+  furniturePoint,
+  placementRotation,
+  placementSize,
+  type GymRotation,
+} from '@/lib/gym/orientation';
+import {
+  orderFurnitureSurfaces,
+  type FurnitureSurface,
+} from '@/lib/gym/depth-order';
 import { RoomSurfaces } from './room-surfaces';
 import { useGymDrag } from '@/hooks/use-gym-drag';
 import { isWalkableItem } from '@/lib/gym/avatar';
@@ -19,444 +38,558 @@ const colors = {
   pale: 'var(--gym-wall)',
   white: '#e5e9df',
 };
-function Furniture({
-  item,
-  location,
-  origin,
-  trophies = [],
-}: {
-  item: GymItem;
-  location: GymPlacement;
-  origin: [number, number];
-  trophies?: { item: GymItem; slot: number }[];
-}) {
-  const project = ([x, y, z]: Point) => {
-    const wx = location.x + (location.rotated ? item.depth - y : x);
-    const wy = location.y + (location.rotated ? x : y);
-    return [origin[0] + (wx - wy) * 36, origin[1] + (wx + wy) * 18 - z * 30];
-  };
-  const points = (list: Point[]) =>
-    list.map((point) => project(point).join(',')).join(' ');
-  const box = (
-    x: number,
-    y: number,
-    z: number,
-    w: number,
-    d: number,
-    h: number,
-    color: string,
-  ) => (
-    <g>
-      <polygon
-        points={points([
-          [x, location.rotated ? y : y + d, z],
-          [x + w, location.rotated ? y : y + d, z],
-          [x + w, location.rotated ? y : y + d, z + h],
-          [x, location.rotated ? y : y + d, z + h],
-        ])}
-        fill={color}
-        style={{
-          filter: location.rotated ? 'brightness(.62)' : 'brightness(.77)',
-        }}
-      />
-      <polygon
-        points={points([
-          [x + w, y, z],
-          [x + w, y + d, z],
-          [x + w, y + d, z + h],
-          [x + w, y, z + h],
-        ])}
-        fill={color}
-        style={{
-          filter: location.rotated ? 'brightness(.77)' : 'brightness(.62)',
-        }}
-      />
-      <polygon
-        points={points([
-          [x, y, z + h],
-          [x + w, y, z + h],
-          [x + w, y + d, z + h],
-          [x, y + d, z + h],
-        ])}
-        fill={color}
-      />
-    </g>
-  );
-  const line = (a: Point, b: Point, stroke = colors.metal, width = 3) => {
-    const p = project(a),
-      q = project(b);
-    return (
-      <line
-        x1={p[0]}
-        y1={p[1]}
-        x2={q[0]}
-        y2={q[1]}
-        stroke={stroke}
-        strokeWidth={width}
-        strokeLinecap="round"
-      />
-    );
-  };
-  const weight = (x: number, y: number, z: number) => (
-    <g>
-      {line([x - 0.16, y, z], [x + 0.16, y, z], '#8e9990', 2)}
-      {box(x - 0.2, y - 0.08, z - 0.07, 0.1, 0.16, 0.14, colors.edge)}
-      {box(x + 0.1, y - 0.08, z - 0.07, 0.1, 0.16, 0.14, colors.edge)}
-    </g>
-  );
-  const id = item.id.replace('starter-', '');
-  let shape;
-  if (id.startsWith('award-')) {
-    const [x, y] = project([0.5, 0.5, 1]);
-    const gold = '#c5a253';
-    let emblem;
-    if (id === 'award-strength')
-      emblem = (
-        <>
-          {line([0.15, 0.5, 1], [0.85, 0.5, 1], gold, 4)}
-          {box(0.08, 0.25, 0.75, 0.18, 0.5, 0.5, gold)}
-          {box(0.74, 0.25, 0.75, 0.18, 0.5, 0.5, gold)}
-        </>
-      );
-    else if (id === 'award-activity')
-      emblem = (
-        <path
-          d={`M${x + 3} ${y - 20}l-17 23h11l-3 17 20-25H${x + 3}Z`}
-          fill={gold}
-          stroke="#8b713d"
-          strokeWidth="1.2"
+const Furniture = memo(
+  function Furniture({
+    item,
+    location,
+    origin,
+    trophies = [],
+  }: {
+    item: GymItem;
+    location: GymPlacement;
+    origin: [number, number];
+    trophies?: { item: GymItem; slot: number }[];
+  }) {
+    const rotation = placementRotation(location);
+    const quarter = rotation / 90;
+    const world = ([x, y, z]: Point): Point => {
+      const [wx, wy] = furniturePoint(item, location, [x, y]);
+      return [wx, wy, z];
+    };
+    const project = ([x, y, z]: Point) => {
+      const [wx, wy] = furniturePoint(item, location, [x, y]);
+      return [origin[0] + (wx - wy) * 36, origin[1] + (wx + wy) * 18 - z * 30];
+    };
+    const points = (list: Point[]) =>
+      list.map((point) => project(point).join(',')).join(' ');
+    const surfaces = new Map<ReactElement, FurnitureSurface<ReactElement>>();
+    const face = (vertices: Point[], color: string, brightness = 1) => {
+      const element = (
+        <polygon
+          points={points(vertices)}
+          fill={color}
+          style={
+            brightness === 1
+              ? undefined
+              : { filter: `brightness(${brightness})` }
+          }
         />
       );
-    else if (id === 'award-mobility')
-      emblem = (
-        <g fill="none" stroke={gold} strokeWidth="3">
-          <path
-            d={`M${x} ${y + 12}C${x - 18} ${y + 6} ${x - 20} ${y - 6} ${x - 14} ${y - 10}Q${x - 3} ${y - 5} ${x} ${y + 12}Q${x + 3} ${y - 5} ${x + 14} ${y - 10}C${x + 20} ${y - 6} ${x + 18} ${y + 6} ${x} ${y + 12}Z`}
-          />
-          <path
-            d={`M${x} ${y + 10}Q${x - 10} ${y - 8} ${x} ${y - 22}Q${x + 10} ${y - 8} ${x} ${y + 10}`}
-          />
-        </g>
+      surfaces.set(element, {
+        world: vertices.map(world),
+        screen: vertices.map((p) => {
+          const [x, y] = project(p);
+          return [x - origin[0], y - origin[1]];
+        }),
+        value: element,
+      });
+      return element;
+    };
+    const box = (
+      x: number,
+      y: number,
+      z: number,
+      w: number,
+      d: number,
+      h: number,
+      color: string,
+    ) => (
+      <g>
+        {face(
+          [
+            [x, quarter === 0 || quarter === 3 ? y + d : y, z],
+            [x + w, quarter === 0 || quarter === 3 ? y + d : y, z],
+            [x + w, quarter === 0 || quarter === 3 ? y + d : y, z + h],
+            [x, quarter === 0 || quarter === 3 ? y + d : y, z + h],
+          ],
+          color,
+          quarter % 2 ? 0.62 : 0.77,
+        )}
+        {face(
+          [
+            [quarter < 2 ? x + w : x, y, z],
+            [quarter < 2 ? x + w : x, y + d, z],
+            [quarter < 2 ? x + w : x, y + d, z + h],
+            [quarter < 2 ? x + w : x, y, z + h],
+          ],
+          color,
+          quarter % 2 ? 0.77 : 0.62,
+        )}
+        {face(
+          [
+            [x, y, z + h],
+            [x + w, y, z + h],
+            [x + w, y + d, z + h],
+            [x, y + d, z + h],
+          ],
+          color,
+        )}
+      </g>
+    );
+    const line = (a: Point, b: Point, stroke = colors.metal, width = 3) => {
+      const p = project(a),
+        q = project(b);
+      const element = (
+        <line
+          x1={p[0]}
+          y1={p[1]}
+          x2={q[0]}
+          y2={q[1]}
+          stroke={stroke}
+          strokeWidth={width}
+          strokeLinecap="round"
+        />
       );
-    else if (id === 'award-weeks')
-      emblem = (
-        <g>
-          <rect
-            x={x - 17}
-            y={y - 18}
-            width="34"
-            height="33"
-            rx="3"
+      const left = Math.min(p[0], q[0]) - origin[0] - width / 2,
+        right = Math.max(p[0], q[0]) - origin[0] + width / 2;
+      const top = Math.min(p[1], q[1]) - origin[1] - width / 2,
+        bottom = Math.max(p[1], q[1]) - origin[1] + width / 2;
+      surfaces.set(element, {
+        world: [world(a), world(b)],
+        screen: [
+          [left, top],
+          [right, top],
+          [right, bottom],
+          [left, bottom],
+        ],
+        value: element,
+      });
+      return element;
+    };
+    const sprite = (
+      anchor: Point,
+      element: ReactElement,
+      width = 40,
+      height = 65,
+    ) => {
+      const [x, y] = project(anchor);
+      const left = x - origin[0] - width / 2,
+        right = left + width,
+        bottom = y - origin[1] + 8,
+        top = bottom - height;
+      surfaces.set(element, {
+        world: [world(anchor)],
+        screen: [
+          [left, top],
+          [right, top],
+          [right, bottom],
+          [left, bottom],
+        ],
+        value: element,
+      });
+      return element;
+    };
+    const weight = (x: number, y: number, z: number) => (
+      <g>
+        {line([x - 0.16, y, z], [x + 0.16, y, z], '#8e9990', 2)}
+        {box(x - 0.2, y - 0.08, z - 0.07, 0.1, 0.16, 0.14, colors.edge)}
+        {box(x + 0.1, y - 0.08, z - 0.07, 0.1, 0.16, 0.14, colors.edge)}
+      </g>
+    );
+    const id = item.id.replace('starter-', '');
+    let shape;
+    if (id.startsWith('award-')) {
+      const [x, y] = project([0.5, 0.5, 1]);
+      const gold = '#c5a253';
+      let emblem;
+      if (id === 'award-strength')
+        emblem = (
+          <>
+            {line([0.15, 0.5, 1], [0.85, 0.5, 1], gold, 4)}
+            {box(0.08, 0.25, 0.75, 0.18, 0.5, 0.5, gold)}
+            {box(0.74, 0.25, 0.75, 0.18, 0.5, 0.5, gold)}
+          </>
+        );
+      else if (id === 'award-activity')
+        emblem = (
+          <path
+            d={`M${x + 3} ${y - 20}l-17 23h11l-3 17 20-25H${x + 3}Z`}
             fill={gold}
             stroke="#8b713d"
+            strokeWidth="1.2"
           />
+        );
+      else if (id === 'award-mobility')
+        emblem = (
+          <g fill="none" stroke={gold} strokeWidth="3">
+            <path
+              d={`M${x} ${y + 12}C${x - 18} ${y + 6} ${x - 20} ${y - 6} ${x - 14} ${y - 10}Q${x - 3} ${y - 5} ${x} ${y + 12}Q${x + 3} ${y - 5} ${x + 14} ${y - 10}C${x + 20} ${y - 6} ${x + 18} ${y + 6} ${x} ${y + 12}Z`}
+            />
+            <path
+              d={`M${x} ${y + 10}Q${x - 10} ${y - 8} ${x} ${y - 22}Q${x + 10} ${y - 8} ${x} ${y + 10}`}
+            />
+          </g>
+        );
+      else if (id === 'award-weeks')
+        emblem = (
+          <g>
+            <rect
+              x={x - 17}
+              y={y - 18}
+              width="34"
+              height="33"
+              rx="3"
+              fill={gold}
+              stroke="#8b713d"
+            />
+            <path
+              d={`M${x - 17} ${y - 7}h34M${x - 9} ${y - 21}v9M${x + 9} ${y - 21}v9`}
+              stroke="#766039"
+              strokeWidth="2.5"
+            />
+            {[-8, 0, 8].flatMap((dx) =>
+              [-1, 7].map((dy) => (
+                <rect
+                  key={`${dx}:${dy}`}
+                  x={x + dx - 2}
+                  y={y + dy}
+                  width="4"
+                  height="4"
+                  rx=".5"
+                  fill="#766039"
+                />
+              )),
+            )}
+          </g>
+        );
+      else
+        emblem = (
           <path
-            d={`M${x - 17} ${y - 7}h34M${x - 9} ${y - 21}v9M${x + 9} ${y - 21}v9`}
-            stroke="#766039"
-            strokeWidth="2.5"
+            d={`M${x} ${y - 20}l5 11 12 2-9 8 2 12-10-6-10 6 2-12-9-8 12-2Z`}
+            fill={gold}
+            stroke="#8b713d"
+            strokeWidth="1"
           />
-          {[-8, 0, 8].flatMap((dx) =>
-            [-1, 7].map((dy) => (
-              <rect
-                key={`${dx}:${dy}`}
-                x={x + dx - 2}
-                y={y + dy}
-                width="4"
-                height="4"
-                rx=".5"
-                fill="#766039"
+        );
+      shape = (
+        <g>
+          {box(0.15, 0.15, 0, 0.7, 0.7, 0.16, colors.wood)}
+          {box(0.4, 0.4, 0.16, 0.2, 0.2, 0.5, colors.metal)}
+          {sprite([0.5, 0.5, 1], <g>{emblem}</g>)}
+        </g>
+      );
+    } else if (id === 'trophy-cabinet') {
+      const shelfTrophies = (upper: boolean) =>
+        trophies
+          .filter(({ slot }) => slot < 2 === upper)
+          .map(({ item: trophy, slot }) => {
+            const anchor: Point = [
+              slot % 2 === 0 ? 0.65 : 2.1,
+              0.62,
+              upper ? 2.5 : 1.03,
+            ];
+            const p = project(anchor);
+            return sprite(
+              anchor,
+              <g
+                key={slot}
+                transform={`translate(${p.join(',')}) scale(.52) translate(0 -18)`}
+              >
+                <Furniture
+                  item={trophy}
+                  origin={[0, 0]}
+                  location={{
+                    room: location.room,
+                    x: 0,
+                    y: 0,
+                    rotated: location.rotated,
+                    rotation,
+                  }}
+                />
+              </g>,
+            );
+          });
+      shape = (
+        <g>
+          {box(0, 0, 0, 3, 1, 0.12, colors.wood)}
+          {box(0, 0, 0.1, 3, 0.12, 2.3, colors.metal)}
+          {box(0, 0, 0.1, 0.1, 1, 2.3, colors.wood)}
+          {box(2.9, 0, 0.1, 0.1, 1, 2.3, colors.wood)}
+          {box(0.05, 0, 0.95, 2.9, 1, 0.08, colors.wood)}
+          {shelfTrophies(false)}
+          {box(0, 0, 2.4, 3, 1, 0.1, colors.wood)}
+          {shelfTrophies(true)}
+        </g>
+      );
+    } else if (item.kind === 'expansion') {
+      shape = (
+        <g>
+          {box(0, 0, 0, 1.8, 1.4, 0.08, colors.wood)}
+          {box(0, 0, 0.08, 1.8, 0.08, 1, colors.pale)}
+          {box(0, 0, 0.08, 0.08, 1.4, 1, colors.pale)}
+        </g>
+      );
+    } else if (id === 'mat')
+      shape = (
+        <g>
+          {box(0.05, 0.12, 0.02, 1.85, 0.72, 0.07, colors.green)}
+          {line([0.2, 0.25, 0.1], [0.2, 0.7, 0.1], '#a6bba6', 2)}
+          {line([1.65, 0.25, 0.1], [1.65, 0.7, 0.1], '#a6bba6', 1)}
+        </g>
+      );
+    else if (id === 'bench')
+      shape = (
+        <g>
+          {box(0.2, 0.3, 0, 0.17, 0.45, 0.5, colors.metal)}
+          {box(1.5, 0.3, 0, 0.17, 0.45, 0.65, colors.metal)}
+          {line([0.3, 0.5, 0.2], [1.65, 0.5, 0.3], colors.metal, 5)}
+          {box(0.1, 0.12, 0.48, 0.65, 0.75, 0.14, colors.green)}
+          {box(0.85, 0.12, 0.65, 1, 0.75, 0.16, colors.green)}
+        </g>
+      );
+    else if (id === 'rack' || id === 'cable')
+      shape = (
+        <g>
+          {box(0.12, 0.15, 0, 2.7, 1.65, 0.1, colors.metal)}
+          {[0.2, 2.6].map((x) => (
+            <g key={x}>
+              {box(x, 0.25, 0.1, 0.12, 0.12, 2.65, colors.metal)}
+              {box(x, 1.6, 0.1, 0.12, 0.12, 2.65, colors.metal)}
+              {line([x, 0.3, 2.7], [x, 1.65, 2.7])}
+              {[0.5, 1, 1.5, 2].map((z) => (
+                <g key={z}>
+                  {line([x + 0.02, 0.22, z], [x + 0.1, 0.22, z], '#b8c4b7', 1)}
+                </g>
+              ))}
+            </g>
+          ))}
+          {line([0.25, 0.3, 2.7], [2.65, 0.3, 2.7])}
+          {id === 'rack' ? (
+            <g>
+              {line([-0.1, 1.2, 1.45], [3.05, 1.2, 1.45], '#bac1b8', 3)}
+              {box(0.1, 1.07, 1.15, 0.18, 0.28, 0.6, colors.edge)}
+              {box(2.6, 1.07, 1.15, 0.18, 0.28, 0.6, colors.edge)}
+            </g>
+          ) : (
+            <g>
+              {box(1.05, 0.3, 0.12, 0.75, 0.8, 2.2, colors.edge)}
+              {line([0.35, 0.3, 2.5], [0.35, 1.35, 1.15], '#bcc4ba', 1)}
+              {line([2.55, 0.3, 2.5], [2.55, 1.35, 1.15], '#bcc4ba', 1)}
+            </g>
+          )}
+        </g>
+      );
+    else if (id === 'dumbbell-rack')
+      shape = (
+        <g>
+          {box(0.15, 0.2, 0, 0.13, 0.65, 1.05, colors.metal)}
+          {box(1.7, 0.2, 0, 0.13, 0.65, 1.05, colors.metal)}
+          {[0.35, 0.75, 1.1].map((z) => (
+            <g key={z}>
+              {box(0.08, 0.15, z, 1.8, 0.75, 0.07, colors.metal)}
+              {[0.35, 0.85, 1.4].map((x) => (
+                <g key={x}>{weight(x, 0.5, z + 0.16)}</g>
+              ))}
+            </g>
+          ))}
+        </g>
+      );
+    else if (id === 'weights' || id === 'kettlebells')
+      shape = (
+        <g>
+          {weight(0.35, 0.3, 0.16)}
+          {weight(0.65, 0.7, 0.16)}
+          {id === 'kettlebells'
+            ? box(0.2, 0.55, 0, 0.25, 0.25, 0.3, colors.green)
+            : null}
+        </g>
+      );
+    else if (id === 'bike')
+      shape = (
+        <g>
+          {line([0.15, 0.4, 0.1], [1.7, 0.4, 0.1], colors.metal, 4)}
+          {line([0.4, 0.4, 0.15], [0.9, 0.4, 1.15], colors.metal, 4)}
+          {line([0.9, 0.4, 1.15], [1.5, 0.4, 0.4], colors.metal, 4)}
+          {box(1.1, 0.15, 0.2, 0.55, 0.55, 0.55, colors.metal)}
+          {line([0.8, 0.4, 0.8], [0.65, 0.4, 1.5])}
+          {box(0.35, 0.2, 1.5, 0.6, 0.4, 0.12, colors.green)}
+          {line([1.5, 0.4, 0.5], [1.65, 0.4, 1.7])}
+          {line([1.65, 0.1, 1.7], [1.65, 0.8, 1.7])}
+        </g>
+      );
+    else if (id === 'treadmill')
+      shape = (
+        <g>
+          {box(0.1, 0.15, 0.05, 2.8, 1.65, 0.18, colors.metal)}
+          {box(0.3, 0.3, 0.24, 2.3, 1.3, 0.025, colors.edge)}
+          {line([2.65, 0.3, 0.2], [2.65, 0.3, 1.65])}
+          {line([2.65, 1.7, 0.2], [2.65, 1.7, 1.65])}
+          {box(2.35, 0.25, 1.65, 0.5, 1.5, 0.18, colors.metal)}
+          {box(2.42, 0.6, 1.85, 0.3, 0.7, 0.025, '#96b6a3')}
+        </g>
+      );
+    else if (id === 'platform')
+      shape = (
+        <g>
+          {box(0.05, 0.05, 0, 2.9, 1.9, 0.13, colors.edge)}
+          {box(0.65, 0.1, 0.13, 1.6, 1.8, 0.04, colors.wood)}
+        </g>
+      );
+    else if (id === 'plant') {
+      const [x, y] = project([0.5, 0.5, 1]);
+      shape = (
+        <g>
+          {box(0.22, 0.22, 0, 0.55, 0.55, 0.5, colors.pale)}
+          {line([0.5, 0.5, 0.45], [0.5, 0.5, 1.4], '#557a56', 2)}
+          {[-1, 1].flatMap((direction) =>
+            [0, 0.25, 0.5].map((offset) => (
+              <ellipse
+                key={`${direction}:${offset}`}
+                cx={x + direction * (10 - offset * 6)}
+                cy={y - offset * 23}
+                rx={12}
+                ry={5}
+                transform={`rotate(${direction * 35} ${x + direction * (10 - offset * 6)} ${y - offset * 23})`}
+                fill={offset === 0.25 ? '#77966d' : '#416f59'}
               />
             )),
           )}
         </g>
       );
-    else
-      emblem = (
-        <path
-          d={`M${x} ${y - 20}l5 11 12 2-9 8 2 12-10-6-10 6 2-12-9-8 12-2Z`}
-          fill={gold}
-          stroke="#8b713d"
-          strokeWidth="1"
-        />
-      );
-    shape = (
-      <g>
-        {box(0.15, 0.15, 0, 0.7, 0.7, 0.16, colors.wood)}
-        {box(0.4, 0.4, 0.16, 0.2, 0.2, 0.5, colors.metal)}
-        {emblem}
-      </g>
-    );
-  } else if (id === 'trophy-cabinet') {
-    const shelfTrophies = (upper: boolean) =>
-      trophies
-        .filter(({ slot }) => slot < 2 === upper)
-        .map(({ item: trophy, slot }) => {
-          const p = project([
-            slot % 2 === 0 ? 0.65 : 2.1,
-            location.rotated ? 0.22 : 0.78,
-            upper ? 2.5 : 1.03,
-          ]);
-          return (
-            <g
-              key={slot}
-              transform={`translate(${p.join(',')}) scale(.52) translate(0 -18)`}
-            >
-              <Furniture
-                item={trophy}
-                origin={[0, 0]}
-                location={{
-                  room: location.room,
-                  x: 0,
-                  y: 0,
-                  rotated: location.rotated,
-                }}
-              />
-            </g>
-          );
+    } else if (id === 'clock' || id === 'poster' || id === 'mirror') {
+      const showFront = rotation === 0 || rotation === 270;
+      const ring = (radius: number): Point[] =>
+        Array.from({ length: 32 }, (_, i) => {
+          const angle = (i * Math.PI) / 16;
+          return [
+            0.5 + Math.cos(angle) * radius,
+            0.57,
+            1.5 + Math.sin(angle) * radius,
+          ];
         });
-    shape = (
-      <g>
-        {box(0, 0, 0, 3, 1, 0.12, colors.wood)}
-        {box(0, 0.85, 0.1, 3, 0.12, 2.3, colors.metal)}
-        {box(0, 0, 0.1, 0.1, 1, 2.3, colors.wood)}
-        {box(2.9, 0, 0.1, 0.1, 1, 2.3, colors.wood)}
-        {box(0.05, 0, 0.95, 2.9, 1, 0.08, colors.wood)}
-        {shelfTrophies(false)}
-        {box(0, 0, 2.4, 3, 1, 0.1, colors.wood)}
-        {shelfTrophies(true)}
-      </g>
-    );
-  } else if (item.kind === 'expansion') {
-    shape = (
-      <g>
-        {box(0, 0, 0, 1.8, 1.4, 0.08, colors.wood)}
-        {box(0, 0, 0.08, 1.8, 0.08, 1, colors.pale)}
-        {box(0, 0, 0.08, 0.08, 1.4, 1, colors.pale)}
-      </g>
-    );
-  } else if (id === 'mat')
-    shape = (
-      <g>
-        {box(0.05, 0.12, 0.02, 1.85, 0.72, 0.07, colors.green)}
-        {line([0.2, 0.25, 0.1], [0.2, 0.7, 0.1], '#a6bba6', 2)}
-        {line([1.65, 0.25, 0.1], [1.65, 0.7, 0.1], '#a6bba6', 1)}
-      </g>
-    );
-  else if (id === 'bench')
-    shape = (
-      <g>
-        {box(0.2, 0.3, 0, 0.17, 0.45, 0.5, colors.metal)}
-        {box(1.5, 0.3, 0, 0.17, 0.45, 0.65, colors.metal)}
-        {line([0.3, 0.5, 0.2], [1.65, 0.5, 0.3], colors.metal, 5)}
-        {box(0.1, 0.12, 0.48, 0.65, 0.75, 0.14, colors.green)}
-        {box(0.85, 0.12, 0.65, 1, 0.75, 0.16, colors.green)}
-      </g>
-    );
-  else if (id === 'rack' || id === 'cable')
-    shape = (
-      <g>
-        {box(0.12, 0.15, 0, 2.7, 1.65, 0.1, colors.metal)}
-        {[0.2, 2.6].map((x) => (
-          <g key={x}>
-            {box(x, 0.25, 0.1, 0.12, 0.12, 2.65, colors.metal)}
-            {box(x, 1.6, 0.1, 0.12, 0.12, 2.65, colors.metal)}
-            {line([x, 0.3, 2.7], [x, 1.65, 2.7])}
-            {[0.5, 1, 1.5, 2].map((z) => (
-              <g key={z}>
-                {line([x + 0.02, 0.22, z], [x + 0.1, 0.22, z], '#b8c4b7', 1)}
-              </g>
-            ))}
-          </g>
+      shape = (
+        <g>
+          {box(0.12, 0.12, 0.02, 0.75, 0.7, 0.12, colors.wood)}
+          {box(0.38, 0.36, 0.12, 0.12, 0.12, 1.9, colors.metal)}
+          {id === 'clock' ? (
+            <>
+              {face(ring(0.42), colors.wood)}
+              {showFront && (
+                <>
+                  {face(ring(0.34), colors.pale)}
+                  {line([0.5, 0.58, 1.5], [0.5, 0.58, 1.75], colors.metal, 1.8)}
+                  {line([0.5, 0.58, 1.5], [0.69, 0.58, 1.4], colors.metal, 1.8)}
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {box(0.08, 0.45, 0.65, 0.84, 0.1, 1.5, colors.wood)}
+              {showFront && (
+                <>
+                  {face(
+                    [
+                      [0.16, 0.56, 0.75],
+                      [0.84, 0.56, 0.75],
+                      [0.84, 0.56, 2.05],
+                      [0.16, 0.56, 2.05],
+                    ],
+                    id === 'mirror' ? '#b4d2cb' : colors.green,
+                  )}
+                  {id === 'mirror'
+                    ? line([0.24, 0.57, 0.85], [0.76, 0.57, 1.95], '#e3eee6', 2)
+                    : face(
+                        [
+                          [0.24, 0.57, 1.1],
+                          [0.5, 0.57, 1.6],
+                          [0.76, 0.57, 1.1],
+                        ],
+                        '#d5c18b',
+                      )}
+                </>
+              )}
+            </>
+          )}
+        </g>
+      );
+    } else if (id === 'water')
+      shape = (
+        <g>
+          {box(0.2, 0.2, 0.05, 0.65, 0.65, 1.25, colors.pale)}
+          {box(0.3, 0.3, 1.3, 0.45, 0.45, 0.5, '#92b9b1')}
+          {box(0.35, 0.78, 0.6, 0.25, 0.08, 0.2, colors.metal)}
+        </g>
+      );
+    else if (id === 'lighting') {
+      const [x, y] = project([0.5, 0.5, 2]);
+      shape = (
+        <g>
+          {box(0.2, 0.2, 0, 0.6, 0.6, 0.08, colors.metal)}
+          {line([0.5, 0.5, 0.08], [0.5, 0.5, 2])}
+          <path d={`M${x - 8} ${y - 12}h16l7 20h-30Z`} fill="#d9c58f" />
+        </g>
+      );
+    } else
+      shape = box(
+        0.02,
+        0.02,
+        0.02,
+        item.width - 0.04,
+        item.depth - 0.04,
+        0.15,
+        item.kind === 'finish' ? colors.wood : colors.green,
+      );
+    const ordered: FurnitureSurface<ReactElement>[] = [];
+    const decorations: ReactNode[] = [];
+    const collect = (node: ReactNode) => {
+      Children.forEach(node, (child) => {
+        if (
+          !isValidElement<{ children?: ReactNode; transform?: string }>(child)
+        )
+          return;
+        const surface = surfaces.get(child);
+        if (surface) ordered.push(surface);
+        else if (
+          (child.type === 'g' || child.type === Fragment) &&
+          !child.props.transform
+        )
+          collect(child.props.children);
+        else decorations.push(child);
+      });
+    };
+    collect(shape);
+    return (
+      <g className="gym-furniture" data-rotation={rotation}>
+        {orderFurnitureSurfaces(ordered).map((element, index) =>
+          cloneElement(element, { key: index }),
+        )}
+        {decorations.map((element, index) => (
+          <g key={`detail-${index}`}>{element}</g>
         ))}
-        {line([0.25, 0.3, 2.7], [2.65, 0.3, 2.7])}
-        {id === 'rack' ? (
-          <g>
-            {line([-0.1, 1.2, 1.45], [3.05, 1.2, 1.45], '#bac1b8', 3)}
-            {box(0.1, 1.07, 1.15, 0.18, 0.28, 0.6, colors.edge)}
-            {box(2.6, 1.07, 1.15, 0.18, 0.28, 0.6, colors.edge)}
-          </g>
-        ) : (
-          <g>
-            {box(1.05, 0.3, 0.12, 0.75, 0.8, 2.2, colors.edge)}
-            {line([0.35, 0.3, 2.5], [0.35, 1.35, 1.15], '#bcc4ba', 1)}
-            {line([2.55, 0.3, 2.5], [2.55, 1.35, 1.15], '#bcc4ba', 1)}
-          </g>
-        )}
       </g>
     );
-  else if (id === 'dumbbell-rack')
-    shape = (
-      <g>
-        {box(0.15, 0.2, 0, 0.13, 0.65, 1.05, colors.metal)}
-        {box(1.7, 0.2, 0, 0.13, 0.65, 1.05, colors.metal)}
-        {[0.35, 0.75, 1.1].map((z) => (
-          <g key={z}>
-            {box(0.08, 0.15, z, 1.8, 0.75, 0.07, colors.metal)}
-            {[0.35, 0.85, 1.4].map((x) => (
-              <g key={x}>{weight(x, 0.5, z + 0.16)}</g>
-            ))}
-          </g>
-        ))}
-      </g>
+  },
+  (previous, next) => {
+    if (
+      previous.item !== next.item ||
+      previous.location.x !== next.location.x ||
+      previous.location.y !== next.location.y ||
+      previous.location.room !== next.location.room ||
+      placementRotation(previous.location) !==
+        placementRotation(next.location) ||
+      previous.origin[0] !== next.origin[0] ||
+      previous.origin[1] !== next.origin[1]
+    )
+      return false;
+    const a = previous.trophies ?? [],
+      b = next.trophies ?? [];
+    return (
+      a.length === b.length &&
+      a.every(
+        (entry, index) =>
+          entry.item === b[index].item && entry.slot === b[index].slot,
+      )
     );
-  else if (id === 'weights' || id === 'kettlebells')
-    shape = (
-      <g>
-        {weight(0.35, 0.3, 0.16)}
-        {weight(0.65, 0.7, 0.16)}
-        {id === 'kettlebells'
-          ? box(0.2, 0.55, 0, 0.25, 0.25, 0.3, colors.green)
-          : null}
-      </g>
-    );
-  else if (id === 'bike')
-    shape = (
-      <g>
-        {line([0.15, 0.4, 0.1], [1.7, 0.4, 0.1], colors.metal, 4)}
-        {line([0.4, 0.4, 0.15], [0.9, 0.4, 1.15], colors.metal, 4)}
-        {line([0.9, 0.4, 1.15], [1.5, 0.4, 0.4], colors.metal, 4)}
-        {box(1.1, 0.15, 0.2, 0.55, 0.55, 0.55, colors.metal)}
-        {line([0.8, 0.4, 0.8], [0.65, 0.4, 1.5])}
-        {box(0.35, 0.2, 1.5, 0.6, 0.4, 0.12, colors.green)}
-        {line([1.5, 0.4, 0.5], [1.65, 0.4, 1.7])}
-        {line([1.65, 0.1, 1.7], [1.65, 0.8, 1.7])}
-      </g>
-    );
-  else if (id === 'treadmill')
-    shape = (
-      <g>
-        {box(0.1, 0.15, 0.05, 2.8, 1.65, 0.18, colors.metal)}
-        {box(0.3, 0.3, 0.24, 2.3, 1.3, 0.025, colors.edge)}
-        {line([2.65, 0.3, 0.2], [2.65, 0.3, 1.65])}
-        {line([2.65, 1.7, 0.2], [2.65, 1.7, 1.65])}
-        {box(2.35, 0.25, 1.65, 0.5, 1.5, 0.18, colors.metal)}
-        {box(2.42, 0.6, 1.85, 0.3, 0.7, 0.025, '#96b6a3')}
-      </g>
-    );
-  else if (id === 'platform')
-    shape = (
-      <g>
-        {box(0.05, 0.05, 0, 2.9, 1.9, 0.13, colors.edge)}
-        {box(0.65, 0.1, 0.13, 1.6, 1.8, 0.04, colors.wood)}
-      </g>
-    );
-  else if (id === 'plant') {
-    const [x, y] = project([0.5, 0.5, 1]);
-    shape = (
-      <g>
-        {box(0.22, 0.22, 0, 0.55, 0.55, 0.5, colors.pale)}
-        {line([0.5, 0.5, 0.45], [0.5, 0.5, 1.4], '#557a56', 2)}
-        {[-1, 1].flatMap((direction) =>
-          [0, 0.25, 0.5].map((offset) => (
-            <ellipse
-              key={`${direction}:${offset}`}
-              cx={x + direction * (10 - offset * 6)}
-              cy={y - offset * 23}
-              rx={12}
-              ry={5}
-              transform={`rotate(${direction * 35} ${x + direction * (10 - offset * 6)} ${y - offset * 23})`}
-              fill={offset === 0.25 ? '#77966d' : '#416f59'}
-            />
-          )),
-        )}
-      </g>
-    );
-  } else if (id === 'clock' || id === 'poster' || id === 'mirror') {
-    const [x, y] = project([0.5, 0.45, 1.5]);
-    shape = (
-      <g>
-        {box(0.12, 0.12, 0.02, 0.75, 0.7, 0.12, colors.wood)}
-        {box(0.38, 0.36, 0.12, 0.12, 0.12, 1.9, colors.metal)}
-        {id === 'clock' ? (
-          <g>
-            <circle
-              cx={x}
-              cy={y}
-              r="14"
-              fill={colors.pale}
-              stroke={colors.wood}
-              strokeWidth="3"
-            />
-            <path
-              d={`M${x} ${y - 8}v8l6 3`}
-              fill="none"
-              stroke={colors.metal}
-              strokeWidth="2"
-            />
-          </g>
-        ) : (
-          <g>
-            <rect
-              x={x - 14}
-              y={y - 25}
-              width="28"
-              height="43"
-              rx="2"
-              fill={colors.wood}
-            />
-            <rect
-              x={x - 11}
-              y={y - 22}
-              width="22"
-              height="37"
-              fill={id === 'mirror' ? '#b4d2cb' : colors.green}
-            />
-            {id === 'mirror' ? (
-              <path
-                d={`M${x - 8} ${y + 10}l16 -28`}
-                stroke="#e3eee6"
-                strokeWidth="2"
-              />
-            ) : (
-              <path d={`M${x - 8} ${y + 3}l8 -12 8 12Z`} fill="#d5c18b" />
-            )}
-          </g>
-        )}
-      </g>
-    );
-  } else if (id === 'water')
-    shape = (
-      <g>
-        {box(0.2, 0.2, 0.05, 0.65, 0.65, 1.25, colors.pale)}
-        {box(0.3, 0.3, 1.3, 0.45, 0.45, 0.5, '#92b9b1')}
-        {box(
-          0.35,
-          location.rotated ? 0.12 : 0.7,
-          0.6,
-          0.25,
-          0.08,
-          0.2,
-          colors.metal,
-        )}
-      </g>
-    );
-  else if (id === 'lighting') {
-    const [x, y] = project([0.5, 0.5, 2]);
-    shape = (
-      <g>
-        {box(0.2, 0.2, 0, 0.6, 0.6, 0.08, colors.metal)}
-        {line([0.5, 0.5, 0.08], [0.5, 0.5, 2])}
-        <path d={`M${x - 8} ${y - 12}h16l7 20h-30Z`} fill="#d9c58f" />
-      </g>
-    );
-  } else
-    shape = box(
-      0.02,
-      0.02,
-      0.02,
-      item.width - 0.04,
-      item.depth - 0.04,
-      0.15,
-      item.kind === 'finish' ? colors.wood : colors.green,
-    );
-  return <g className="gym-furniture">{shape}</g>;
-}
+  },
+);
 export function GymItemPreview({
   item,
   rotated = false,
+  rotation = rotated ? 90 : 0,
 }: {
   item: GymItem;
   rotated?: boolean;
+  rotation?: GymRotation;
 }) {
   if (item.kind === 'apparel')
     return (
@@ -512,10 +645,11 @@ export function GymItemPreview({
                   : item.kind === 'expansion'
                     ? 35
                     : 26;
-  const width =
-    item.kind === 'expansion' ? 2 : rotated ? item.depth : item.width;
-  const depth =
-    item.kind === 'expansion' ? 2 : rotated ? item.width : item.depth;
+  const orientation = { rotated: rotation % 180 !== 0, rotation };
+  const { width, depth } =
+    item.kind === 'expansion'
+      ? { width: 2, depth: 2 }
+      : placementSize(item, orientation);
   return (
     <svg
       viewBox={`${-depth * 36 - 10} ${-tall - 10} ${(width + depth) * 36 + 20} ${(width + depth) * 18 + tall + 24}`}
@@ -524,7 +658,7 @@ export function GymItemPreview({
     >
       <Furniture
         item={item}
-        location={{ room: 'main', x: 0, y: 0, rotated }}
+        location={{ room: 'main', x: 0, y: 0, ...orientation }}
         origin={[0, 0]}
       />
     </svg>
@@ -693,14 +827,14 @@ export function IsometricScene({
                     x: Math.max(
                       0,
                       Math.min(
-                        size - (location!.rotated ? item.depth : item.width),
+                        size - placementSize(item, location!).width,
                         location!.x + delta[0],
                       ),
                     ),
                     y: Math.max(
                       0,
                       Math.min(
-                        size - (location!.rotated ? item.width : item.depth),
+                        size - placementSize(item, location!).depth,
                         location!.y + delta[1],
                       ),
                     ),
@@ -722,7 +856,7 @@ export function IsometricScene({
               <g aria-hidden="true">
                 {activeId === id ? (
                   <polygon
-                    points={`${floor(location!.x, location!.y)} ${floor(location!.x + (location!.rotated ? item.depth : item.width), location!.y)} ${floor(location!.x + (location!.rotated ? item.depth : item.width), location!.y + (location!.rotated ? item.width : item.depth))} ${floor(location!.x, location!.y + (location!.rotated ? item.width : item.depth))}`}
+                    points={`${floor(location!.x, location!.y)} ${floor(location!.x + placementSize(item, location!).width, location!.y)} ${floor(location!.x + placementSize(item, location!).width, location!.y + placementSize(item, location!).depth)} ${floor(location!.x, location!.y + placementSize(item, location!).depth)}`}
                     fill={
                       placementError(gym, id, location!)
                         ? 'var(--destructive)'
