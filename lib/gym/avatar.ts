@@ -15,7 +15,13 @@ export const isWalkableItem = (item: GymItem) =>
 export function surfaceElevation(gym: GymState, room: string, cell: Cell) {
   for (const entry of ownedItems(gym)) {
     const place = gym.placements[entry.id];
-    if (!place || place.room !== room || !isWalkableItem(entry.item)) continue;
+    if (
+      !place ||
+      place.wall ||
+      place.room !== room ||
+      !isWalkableItem(entry.item)
+    )
+      continue;
     const { width, depth } = placementSize(entry.item, place);
     if (
       cell.x >= place.x &&
@@ -139,7 +145,7 @@ export function walkableGym(gym: GymState, room: string): Cell[] {
     blocked = new Set<string>();
   for (const entry of ownedItems(gym)) {
     const p = gym.placements[entry.id];
-    if (!p || p.room !== room || isWalkableItem(entry.item)) continue;
+    if (!p || p.wall || p.room !== room || isWalkableItem(entry.item)) continue;
     const { width: w, depth: d } = placementSize(entry.item, p);
     for (let x = p.x; x < p.x + w; x++)
       for (let y = p.y; y < p.y + d; y++) blocked.add(`${x}:${y}`);

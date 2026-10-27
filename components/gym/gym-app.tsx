@@ -194,7 +194,13 @@ export function GymApp({
   const rotateObject = async () => {
     if (!gym || !selected || !position || !canSave) return;
     const previous = gym.placements[selected] ?? null;
-    const rotated = rotatePlacement(position);
+    const rotated = position.wall
+      ? {
+          ...position,
+          wall:
+            position.wall === 'left' ? ('right' as const) : ('left' as const),
+        }
+      : rotatePlacement(position);
     const error = placementError(gym, selected, rotated);
     setPlacementMessage(error);
     if (error) return;
@@ -362,6 +368,11 @@ export function GymApp({
                       canSave={canSave}
                       salePrice={selectedEntry.paid}
                       onRotate={() => void rotateObject()}
+                      onMove={(placement) => {
+                        const error = placementError(gym, selected!, placement);
+                        setPlacementMessage(error);
+                        if (!error) void dropObject(selected!, placement);
+                      }}
                       onStore={() => void savePosition(null)}
                       onSell={() => setReturning(selectedEntry.id)}
                     />

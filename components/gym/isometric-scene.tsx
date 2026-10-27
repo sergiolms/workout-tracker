@@ -50,6 +50,83 @@ const Furniture = memo(
     origin: [number, number];
     trophies?: { item: GymItem; slot: number }[];
   }) {
+    if (location.wall) {
+      const width = item.width;
+      const point = (u: number, z: number) =>
+        location.wall === 'left'
+          ? [origin[0] - u * 36, origin[1] + u * 18 - z]
+          : [origin[0] + u * 36, origin[1] + u * 18 - z];
+      const base = location.x + 0.12,
+        top = location.y === 0 ? 82 : 51,
+        height = item.id === 'clock' ? 24 : 35;
+      const poly = (a: number, b: number, c: number, d: number) =>
+        [point(a, c), point(b, c), point(b, d), point(a, d)]
+          .map((p) => p.join(','))
+          .join(' ');
+      const face =
+        item.id === 'window'
+          ? '#8db9c3'
+          : item.id === 'mirror'
+            ? '#b4d2cb'
+            : item.id === 'clock'
+              ? '#e2e7d9'
+              : '#526d5e';
+      return (
+        <g className="gym-furniture" data-wall={location.wall}>
+          <polygon
+            points={poly(base, base + width - 0.24, top, top - height)}
+            fill="#b29872"
+          />
+          <polygon
+            points={poly(
+              base + 0.05,
+              base + width - 0.29,
+              top - 3,
+              top - height + 3,
+            )}
+            fill={face}
+          />
+          {item.id === 'window' && (
+            <polyline
+              points={[
+                point(base + width / 2 - 0.12, top - 3),
+                point(base + width / 2 - 0.12, top - height + 3),
+              ]
+                .map((p) => p.join(','))
+                .join(' ')}
+              stroke="#e5e9df"
+              strokeWidth="2"
+            />
+          )}
+          {item.id === 'clock' && (
+            <polyline
+              points={[
+                point(base + 0.35, top - 6),
+                point(base + 0.35, top - 13),
+                point(base + 0.52, top - 16),
+              ]
+                .map((p) => p.join(','))
+                .join(' ')}
+              fill="none"
+              stroke="#38463f"
+              strokeWidth="2"
+            />
+          )}
+          {item.id === 'poster' && (
+            <polygon
+              points={[
+                point(base + 0.15, top - height + 7),
+                point(base + width / 2 - 0.1, top - 8),
+                point(base + width - 0.4, top - height + 7),
+              ]
+                .map((p) => p.join(','))
+                .join(' ')}
+              fill="#d5c18b"
+            />
+          )}
+        </g>
+      );
+    }
     const rotation = placementRotation(location);
     const quarter = rotation / 90;
     const world = ([x, y, z]: Point): Point => {
@@ -178,6 +255,42 @@ const Furniture = memo(
         value: element,
       });
       return element;
+    };
+    const cylinder = (
+      x: number,
+      y: number,
+      z: number,
+      r: number,
+      length: number,
+      axis: 'x' | 'y' | 'z',
+      color: string,
+    ) => {
+      const at = (t: number, a: number): Point =>
+        axis === 'x'
+          ? [x + t, y + Math.cos(a) * r, z + Math.sin(a) * r]
+          : axis === 'y'
+            ? [x + Math.cos(a) * r, y + t, z + Math.sin(a) * r]
+            : [x + Math.cos(a) * r, y + Math.sin(a) * r, z + t];
+      const ring = (t: number) =>
+        Array.from({ length: 16 }, (_, i) => at(t, (i * Math.PI) / 8));
+      return (
+        <g>
+          {Array.from({ length: 16 }, (_, i) =>
+            face(
+              [
+                at(0, (i * Math.PI) / 8),
+                at(length, (i * Math.PI) / 8),
+                at(length, ((i + 1) * Math.PI) / 8),
+                at(0, ((i + 1) * Math.PI) / 8),
+              ],
+              color,
+              0.72 + 0.2 * Math.cos((i * Math.PI) / 8),
+            ),
+          )}
+          {face(ring(0), color, 0.8)}
+          {face(ring(length), color)}
+        </g>
+      );
     };
     const weight = (x: number, y: number, z: number) => (
       <g>
@@ -418,6 +531,141 @@ const Furniture = memo(
           {box(2.42, 0.6, 1.85, 0.3, 0.7, 0.025, '#96b6a3')}
         </g>
       );
+    else if (id === 'foam-roller')
+      shape = (
+        <g>
+          {cylinder(0.12, 0.5, 0.24, 0.22, 0.76, 'x', '#778fb3')}
+          {cylinder(0.1, 0.5, 0.24, 0.1, 0.03, 'x', '#35475d')}
+          {cylinder(0.89, 0.5, 0.24, 0.1, 0.03, 'x', '#35475d')}
+          {line([0.18, 0.5, 0.3], [0.82, 0.5, 0.3], '#aab9c6', 1)}
+        </g>
+      );
+    else if (id === 'plate-storage')
+      shape = (
+        <g>
+          {box(0.15, 0.2, 0, 0.7, 0.6, 0.15, colors.metal)}
+          {line([0.5, 0.5, 0.15], [0.5, 0.5, 1.5], colors.metal, 4)}
+          {[0.35, 0.7, 1.05].map((z) => (
+            <g key={z}>
+              {cylinder(0.1, 0.5, z, 0.21, 0.13, 'x', '#3e5156')}
+              {cylinder(0.77, 0.5, z, 0.21, 0.13, 'x', '#3e5156')}
+              {line([0.14, 0.5, z + 0.1], [0.85, 0.5, z + 0.1], '#819185', 2)}
+            </g>
+          ))}
+        </g>
+      );
+    else if (id === 'punching-bag')
+      shape = (
+        <g>
+          {box(0.1, 0.1, 0, 0.8, 0.8, 0.1, colors.metal)}
+          {line([0.5, 0.5, 0.1], [0.5, 0.5, 2.7], colors.metal, 4)}
+          {line([0.5, 0.5, 2.7], [0.8, 0.5, 2.7], colors.metal, 4)}
+          {cylinder(0.72, 0.5, 0.55, 0.23, 1.55, 'z', '#a95850')}
+          {line([0.72, 0.5, 2.1], [0.8, 0.5, 2.7], '#a7b3aa', 1.2)}
+          {cylinder(0.72, 0.5, 0.65, 0.235, 0.09, 'z', '#d5b48c')}
+        </g>
+      );
+    else if (id === 'rowing-machine')
+      shape = (
+        <g>
+          {box(0.1, 0.25, 0.08, 2.8, 0.5, 0.12, colors.metal)}
+          {cylinder(0.45, 0.2, 0.53, 0.38, 0.6, 'y', '#566a70')}
+          {cylinder(0.45, 0.19, 0.53, 0.22, 0.03, 'y', '#99b3aa')}
+          {box(0.85, 0.16, 0.22, 0.22, 0.2, 0.3, colors.edge)}
+          {box(0.85, 0.64, 0.22, 0.22, 0.2, 0.3, colors.edge)}
+          {box(1.45, 0.22, 0.3, 0.5, 0.55, 0.13, colors.green)}
+          {line([0.5, 0.5, 0.65], [1.25, 0.5, 0.9], '#b4beb3', 2)}
+          {line([1.25, 0.25, 0.9], [1.25, 0.75, 0.9], colors.metal, 3)}
+        </g>
+      );
+    else if (id === 'leg-press')
+      shape = (
+        <g>
+          {box(0.1, 0.15, 0, 2.8, 1.7, 0.12, colors.metal)}
+          {line([0.4, 0.35, 0.2], [2.4, 0.35, 1.5], colors.metal, 5)}
+          {line([0.4, 1.5, 0.2], [2.4, 1.5, 1.5], colors.metal, 5)}
+          {box(0.25, 0.5, 0.3, 0.7, 1, 0.15, colors.green)}
+          {box(0.8, 0.48, 0.48, 0.22, 1, 1, colors.green)}
+          {box(2.05, 0.3, 1.3, 0.45, 1.4, 0.18, colors.edge)}
+          {cylinder(2.2, 0.12, 1.12, 0.3, 0.12, 'y', '#607d87')}
+          {cylinder(2.2, 1.75, 1.12, 0.3, 0.12, 'y', '#607d87')}
+        </g>
+      );
+    else if (id === 'pullup-bar')
+      shape = (
+        <g>
+          {box(0.1, 0.2, 0, 0.15, 0.6, 2.5, colors.metal)}
+          {box(1.75, 0.2, 0, 0.15, 0.6, 2.5, colors.metal)}
+          {line([0.15, 0.5, 2.5], [1.85, 0.5, 2.5], '#a7b2a9', 4)}
+          {box(0.05, 0.1, 0, 1.9, 0.8, 0.1, colors.metal)}
+        </g>
+      );
+    else if (id === 'exercise-mat')
+      shape = (
+        <g>
+          {box(0.05, 0.1, 0.02, 1.9, 0.8, 0.12, '#a9839f')}
+          {line([0.2, 0.2, 0.15], [0.2, 0.8, 0.15], '#dbc2d0', 2)}
+          {[0.5, 0.8, 1.1, 1.4, 1.7].map((x) =>
+            line([x, 0.17, 0.15], [x, 0.83, 0.15], '#c9a9c2', 0.6),
+          )}
+        </g>
+      );
+    else if (id === 'speaker')
+      shape = (
+        <g>
+          {box(0.2, 0.2, 0, 0.6, 0.6, 1.25, colors.edge)}
+          {cylinder(0.5, 0.8, 0.89, 0.17, 0.03, 'y', '#80949a')}
+          {cylinder(0.5, 0.84, 0.89, 0.09, 0.02, 'y', '#26363c')}
+          {cylinder(0.5, 0.8, 0.36, 0.12, 0.03, 'y', '#80949a')}
+        </g>
+      );
+    else if (id === 'lockers')
+      shape = (
+        <g>
+          {box(0.1, 0.1, 0, 1.8, 0.8, 2.2, '#819489')}
+          {[0.2, 0.8, 1.4].map((x) => (
+            <g key={x}>
+              {box(x, 0.91, 0.15, 0.48, 0.04, 1.95, '#a4b4a4')}
+              {box(x + 0.35, 0.96, 1.1, 0.07, 0.04, 0.15, colors.metal)}
+            </g>
+          ))}
+        </g>
+      );
+    else if (id === 'towel-rack')
+      shape = (
+        <g>
+          {box(0.1, 0.2, 0, 0.8, 0.6, 0.1, colors.metal)}
+          {line([0.2, 0.4, 0.1], [0.2, 0.4, 1.7])}
+          {line([0.8, 0.4, 0.1], [0.8, 0.4, 1.7])}
+          {line([0.2, 0.4, 1.7], [0.8, 0.4, 1.7])}
+          {box(0.24, 0.37, 0.65, 0.24, 0.1, 1, '#d9e6df')}
+          {box(0.56, 0.37, 0.9, 0.22, 0.1, 0.75, '#93b5bf')}
+          {line([0.25, 0.49, 0.77], [0.46, 0.49, 0.77], '#8fa89a', 1)}
+        </g>
+      );
+    else if (id === 'training-board')
+      shape = (
+        <g>
+          {box(0.1, 0.15, 0, 1.8, 0.7, 0.12, colors.wood)}
+          {line([0.3, 0.5, 0.12], [0.3, 0.5, 2.2])}
+          {line([1.7, 0.5, 0.12], [1.7, 0.5, 2.2])}
+          {box(0.1, 0.4, 0.75, 1.8, 0.12, 1.3, colors.wood)}
+          {box(0.2, 0.53, 0.85, 1.6, 0.03, 1.1, '#526d5e')}
+          {[1.1, 1.35, 1.6].map((z) =>
+            line([0.35, 0.57, z], [1.6, 0.57, z], '#e1e8d9', 2),
+          )}
+        </g>
+      );
+    else if (id === 'window')
+      shape = (
+        <g>
+          {box(0.1, 0.15, 0, 1.8, 0.7, 0.12, colors.wood)}
+          {box(0.1, 0.3, 0.6, 1.8, 0.14, 1.8, colors.wood)}
+          {box(0.2, 0.45, 0.7, 1.6, 0.03, 1.6, '#8db9c3')}
+          {line([1, 0.49, 0.7], [1, 0.49, 2.3], '#e5e9df', 3)}
+          {line([0.2, 0.49, 1.5], [1.8, 0.49, 1.5], '#e5e9df', 3)}
+        </g>
+      );
     else if (id === 'platform')
       shape = (
         <g>
@@ -565,6 +813,7 @@ const Furniture = memo(
       previous.location.x !== next.location.x ||
       previous.location.y !== next.location.y ||
       previous.location.room !== next.location.room ||
+      previous.location.wall !== next.location.wall ||
       placementRotation(previous.location) !==
         placementRotation(next.location) ||
       previous.origin[0] !== next.origin[0] ||
@@ -619,8 +868,17 @@ export function GymItemPreview({
         />
       </svg>
     );
-  const tall =
-    item.id === 'water'
+  const tall = [
+    'punching-bag',
+    'pullup-bar',
+    'lockers',
+    'training-board',
+    'window',
+    'towel-rack',
+    'leg-press',
+  ].includes(item.id)
+    ? 100
+    : item.id === 'water'
       ? 72
       : item.id.startsWith('award-')
         ? 65
@@ -727,6 +985,7 @@ export function IsometricScene({
             item: null,
             location: {
               room,
+              wall: undefined,
               x: character.cell.x,
               y: character.cell.y,
               rotated: false,
@@ -738,7 +997,10 @@ export function IsometricScene({
     const af = Boolean(a.item && isWalkableItem(a.item)),
       bf = Boolean(b.item && isWalkableItem(b.item));
     if (af !== bf) return af ? -1 : 1;
-    return a.location!.x + a.location!.y - b.location!.x - b.location!.y;
+    return (
+      (a.location!.wall ? -100 : a.location!.x + a.location!.y) -
+      (b.location!.wall ? -100 : b.location!.x + b.location!.y)
+    );
   });
   const floorId = gym.purchases[gym.finishes[room]?.floor ?? '']?.itemId ?? '';
   const wallId = gym.purchases[gym.finishes[room]?.wall ?? '']?.itemId ?? '';
@@ -803,7 +1065,10 @@ export function IsometricScene({
               aria-describedby={onSelect ? movementHelp : undefined}
               data-draggable={Boolean(onDrop)}
               data-dragging={dragPreview?.id === id}
-              onPointerDown={(event) => onDragStart(event, id, location!, item)}
+              onPointerDown={(event) => {
+                if (location!.wall) onSelect?.(id);
+                else onDragStart(event, id, location!, item);
+              }}
               className="gym-scene-object"
               onClick={(event) => {
                 if (!onDrop || event.detail === 0) onSelect?.(id);
@@ -854,7 +1119,7 @@ export function IsometricScene({
               }}
             >
               <g aria-hidden="true">
-                {activeId === id ? (
+                {activeId === id && !location!.wall ? (
                   <polygon
                     points={`${floor(location!.x, location!.y)} ${floor(location!.x + placementSize(item, location!).width, location!.y)} ${floor(location!.x + placementSize(item, location!).width, location!.y + placementSize(item, location!).depth)} ${floor(location!.x, location!.y + placementSize(item, location!).depth)}`}
                     fill={

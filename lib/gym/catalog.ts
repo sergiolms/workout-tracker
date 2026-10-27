@@ -11,6 +11,13 @@ export type GymItem = {
   starter?: boolean;
 };
 const sizes: Record<string, [number, number]> = {
+  'rowing-machine': [3, 1],
+  'leg-press': [3, 2],
+  'pullup-bar': [2, 1],
+  'exercise-mat': [2, 1],
+  lockers: [2, 1],
+  'training-board': [2, 1],
+  window: [2, 1],
   'trophy-cabinet': [3, 1],
   bench: [2, 1],
   rack: [3, 2],
@@ -55,3 +62,11 @@ export const starterItems: GymItem[] = [
 ];
 export const gymItem = (id: string) =>
   [...gymCatalog, ...starterItems].find((item) => item.id === id);
+
+export const wallItemIds = [
+  'window',
+  'clock',
+  'poster',
+  'mirror',
+  'training-board',
+];

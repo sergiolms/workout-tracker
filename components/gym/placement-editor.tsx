@@ -11,6 +11,7 @@ export function PlacementEditor({
   error,
   canSave,
   onRotate,
+  onMove,
   salePrice,
   onStore,
   onSell,
@@ -20,6 +21,7 @@ export function PlacementEditor({
   error: string;
   canSave: boolean;
   onRotate: () => void;
+  onMove: (position: GymPlacement) => void;
   salePrice: number;
   onStore: () => void;
   onSell: () => void;
@@ -29,9 +31,45 @@ export function PlacementEditor({
       <div className="flex items-center justify-between gap-2">
         <div>
           <strong>{item.name}</strong>
-          <p className="text-xs text-muted-foreground">Arrastra para mover</p>
+          <p className="text-xs text-muted-foreground">
+            {position?.wall
+              ? 'Usa los controles para colocar en la pared'
+              : 'Arrastra para mover'}
+          </p>
         </div>
       </div>
+      {position?.wall && (
+        <div className="flex flex-wrap gap-2 my-3">
+          {(['left', 'right'] as const).map((wall) => (
+            <Button
+              key={wall}
+              disabled={!canSave}
+              variant="outline"
+              onClick={() => onMove({ ...position, wall })}
+            >
+              {wall === 'left' ? 'Pared izquierda' : 'Pared derecha'}
+            </Button>
+          ))}
+          <Button
+            disabled={!canSave}
+            onClick={() => onMove({ ...position, x: position.x - 1 })}
+          >
+            ←
+          </Button>
+          <Button
+            disabled={!canSave}
+            onClick={() => onMove({ ...position, x: position.x + 1 })}
+          >
+            →
+          </Button>
+          <Button
+            disabled={!canSave}
+            onClick={() => onMove({ ...position, y: position.y === 0 ? 1 : 0 })}
+          >
+            Cambiar altura
+          </Button>
+        </div>
+      )}
       <div className="gym-placement-actions">
         <Button
           variant="outline"

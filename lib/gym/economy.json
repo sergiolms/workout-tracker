@@ -193,6 +193,78 @@
       "name": "Oversize arena",
       "price": 70,
       "kind": "apparel"
+    },
+    {
+      "id": "foam-roller",
+      "name": "Foam roller",
+      "price": 35,
+      "kind": "equipment"
+    },
+    {
+      "id": "plate-storage",
+      "name": "Soporte de discos",
+      "price": 75,
+      "kind": "decoration"
+    },
+    {
+      "id": "punching-bag",
+      "name": "Saco de boxeo",
+      "price": 130,
+      "kind": "equipment"
+    },
+    {
+      "id": "rowing-machine",
+      "name": "Máquina de remo",
+      "price": 280,
+      "kind": "equipment"
+    },
+    {
+      "id": "leg-press",
+      "name": "Prensa de piernas",
+      "price": 350,
+      "kind": "equipment"
+    },
+    {
+      "id": "pullup-bar",
+      "name": "Barra de dominadas",
+      "price": 200,
+      "kind": "equipment"
+    },
+    {
+      "id": "exercise-mat",
+      "name": "Colchoneta de ejercicios",
+      "price": 50,
+      "kind": "equipment"
+    },
+    {
+      "id": "speaker",
+      "name": "Altavoz",
+      "price": 45,
+      "kind": "decoration"
+    },
+    {
+      "id": "lockers",
+      "name": "Taquillas",
+      "price": 110,
+      "kind": "decoration"
+    },
+    {
+      "id": "towel-rack",
+      "name": "Toallero con toallas",
+      "price": 35,
+      "kind": "decoration"
+    },
+    {
+      "id": "training-board",
+      "name": "Pizarra de entrenamiento",
+      "price": 80,
+      "kind": "decoration"
+    },
+    {
+      "id": "window",
+      "name": "Ventanal",
+      "price": 160,
+      "kind": "decoration"
     }
   ]
 }

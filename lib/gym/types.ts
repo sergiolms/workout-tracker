@@ -13,6 +13,8 @@ export type GymPlacement = {
   rotated: boolean;
   /** Absent in older saves: rotated=false maps to 0°, true to 90°. */
   rotation?: 0 | 90 | 180 | 270;
+  /** Optional mounting surface; missing values represent legacy floor objects. */
+  wall?: 'left' | 'right';
 };
 export type GymPurchase = {
   id: string;

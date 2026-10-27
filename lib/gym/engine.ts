@@ -1,3 +1,4 @@
+import { wallItemIds } from './catalog.ts';
 import {
   defaultAvatar,
   avatarOutfits,
@@ -559,6 +560,32 @@ export function placementError(
   if (!owned || !['equipment', 'decoration'].includes(owned.item.kind))
     return 'Este objeto no se puede colocar.';
   const size = roomSize(gym, placement.room);
+  if (placement.wall) {
+    if (
+      !['left', 'right'].includes(placement.wall) ||
+      !wallItemIds.includes(owned.item.id) ||
+      !Number.isInteger(placement.x) ||
+      !Number.isInteger(placement.y) ||
+      placement.x < 0 ||
+      placement.x + owned.item.width > size ||
+      placement.y < 0 ||
+      placement.y > 1
+    )
+      return 'Posición de pared incorrecta.';
+    for (const other of ownedItems(gym)) {
+      const p = gym.placements[other.id];
+      if (
+        other.id !== id &&
+        p?.room === placement.room &&
+        p.wall === placement.wall &&
+        p.y === placement.y &&
+        placement.x < p.x + other.item.width &&
+        placement.x + owned.item.width > p.x
+      )
+        return 'Ese espacio de pared ya está ocupado.';
+    }
+    return '';
+  }
   const { width, depth } = placementSize(owned.item, placement);
   if (
     !Number.isInteger(placement.x) ||
@@ -572,7 +599,8 @@ export function placementError(
   for (const other of ownedItems(gym)) {
     if (other.id === id) continue;
     const location = gym.placements[other.id];
-    if (!location || location.room !== placement.room) continue;
+    if (!location || location.room !== placement.room || location.wall)
+      continue;
     const { width: w, depth: d } = placementSize(other.item, location);
     if (
       placement.x < location.x + w &&
@@ -590,6 +618,16 @@ export function firstGymPlacement(
   room: 'main' | 'annex',
 ): GymPlacement | null {
   const size = roomSize(gym, room);
+  const entry = ownedItems(gym).find((entry) => entry.id === id);
+  if (entry && wallItemIds.includes(entry.item.id)) {
+    for (const wall of ['left', 'right'] as const)
+      for (let y = 0; y < 2; y++)
+        for (let x = 0; x < size; x++) {
+          const placement = { room, wall, x, y, rotated: false };
+          if (!placementError(gym, id, placement)) return placement;
+        }
+    return null;
+  }
   for (const rotated of [false, true])
     for (let y = 0; y < size; y++)
       for (let x = 0; x < size; x++) {
