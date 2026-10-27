@@ -12,6 +12,7 @@ import {
   defaultAvatar,
   avatarOutfits,
   avatarSkins,
+  avatarHairstyles,
   type GymAvatar,
 } from '@/lib/gym/appearance';
 import { ownedItems } from '@/lib/gym/engine';
@@ -48,7 +49,7 @@ export function AvatarEditor({
           Un compañero para tu gimnasio. Su actividad es decorativa.
         </DialogDescription>
         <svg
-          viewBox="-30 -68 60 76"
+          viewBox="-30 -74 60 82"
           className="mx-auto h-36 w-36"
           aria-label="Vista previa del personaje"
         >
@@ -73,14 +74,7 @@ export function AvatarEditor({
         <fieldset>
           <legend className="mb-2 font-semibold">Peinado</legend>
           <div className="grid grid-cols-4 gap-2">
-            {(
-              [
-                { id: 'short', name: 'Corto' },
-                { id: 'curly', name: 'Rizado' },
-                { id: 'long', name: 'Largo' },
-                { id: 'ponytail', name: 'Coleta' },
-              ] as const
-            ).map((hair) => (
+            {avatarHairstyles.map((hair) => (
               <button
                 type="button"
                 className="gym-avatar-choice"
@@ -89,7 +83,7 @@ export function AvatarEditor({
                 onClick={() => setAppearance({ ...appearance, hair: hair.id })}
               >
                 <svg
-                  viewBox="-23 -68 46 34"
+                  viewBox="-23 -74 46 40"
                   className="h-12 w-full"
                   aria-hidden="true"
                 >
@@ -134,7 +128,7 @@ export function AvatarEditor({
                   onClick={() => setAppearance({ ...appearance, outfit: id })}
                 >
                   <svg
-                    viewBox="-28 -68 56 76"
+                    viewBox="-28 -74 56 82"
                     className="h-20 w-full"
                     aria-hidden="true"
                   >

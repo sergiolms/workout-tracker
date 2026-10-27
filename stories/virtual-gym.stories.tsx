@@ -1,5 +1,5 @@
 import { AvatarFigure } from '../components/gym/avatar-figure';
-import { defaultAvatar } from '../lib/gym/appearance';
+import { defaultAvatar, avatarHairstyles } from '../lib/gym/appearance';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useMemo, useRef, useState } from 'react';
 import { GymApp } from '../components/gym/gym-app';
@@ -221,13 +221,13 @@ export const CharacterReview: Story = {
   render: () => (
     <div className="grid gap-6 sm:grid-cols-4">
       {(['man', 'woman'] as const).flatMap((body) =>
-        (['short', 'curly', 'long', 'ponytail'] as const).map((hair) => (
+        avatarHairstyles.map(({ id: hair }) => (
           <section
             key={`${body}:${hair}`}
             className="rounded-xl border border-border bg-card p-4"
           >
             <svg
-              viewBox="-30 -68 60 76"
+              viewBox="-30 -74 60 82"
               className="mx-auto h-52 w-full"
               aria-label={`${body === 'man' ? 'Hombre' : 'Mujer'}, ${hair}`}
             >

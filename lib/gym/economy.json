@@ -163,6 +163,36 @@
       "name": "Conjunto noche",
       "price": 90,
       "kind": "apparel"
+    },
+    {
+      "id": "outfit-forest",
+      "name": "Tirantes bosque",
+      "price": 40,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-sprint",
+      "name": "Running coral",
+      "price": 55,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-lilac",
+      "name": "Conjunto lavanda",
+      "price": 65,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-graphite",
+      "name": "Técnico grafito",
+      "price": 80,
+      "kind": "apparel"
+    },
+    {
+      "id": "outfit-sand",
+      "name": "Oversize arena",
+      "price": 70,
+      "kind": "apparel"
     }
   ]
 }

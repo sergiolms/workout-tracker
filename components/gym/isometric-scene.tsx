@@ -460,7 +460,7 @@ export function GymItemPreview({
 }) {
   if (item.kind === 'apparel')
     return (
-      <svg viewBox="-28 -68 56 76" className="h-24 w-full" aria-hidden="true">
+      <svg viewBox="-28 -74 56 82" className="h-24 w-full" aria-hidden="true">
         <AvatarFigure
           appearance={{
             ...defaultAvatar,

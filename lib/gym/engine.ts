@@ -2,6 +2,7 @@ import {
   defaultAvatar,
   avatarOutfits,
   avatarSkins,
+  avatarHairstyles,
   type GymAvatar,
 } from './appearance.ts';
 import type { AppState } from '../storage.ts';
@@ -496,7 +497,7 @@ export function avatarError(gym: GymState, avatar: GymAvatar) {
   if (
     !avatar ||
     !['man', 'woman'].includes(avatar.body) ||
-    !['short', 'curly', 'long', 'ponytail'].includes(avatar.hair) ||
+    !avatarHairstyles.some((style) => style.id === avatar.hair) ||
     !avatarSkins.includes(avatar.skin) ||
     typeof avatar.wandering !== 'boolean' ||
     !avatarOutfits[avatar.outfit]
