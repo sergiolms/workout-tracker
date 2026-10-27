@@ -5,12 +5,15 @@ import {
   CloudOff,
   Download,
   HardDrive,
+  Dumbbell,
+  ArrowUpRight,
   LogOut,
   Moon,
   Monitor,
   Sun,
 } from 'lucide-react';
 import { useState } from 'react';
+import { ProfileAchievements } from '@/components/profile-achievements';
 import { Button } from '@/components/ui/button';
 import { firebaseConfigured, type FirebaseUser } from '@/lib/firebase';
 import { type AppState } from '@/lib/storage';
@@ -33,6 +36,7 @@ export function ProfileView({
   authError,
   onGoogleLogin,
   onLogout,
+  onOpenGym,
 }: {
   editable: boolean;
   state: AppState;
@@ -43,8 +47,11 @@ export function ProfileView({
   authError: string;
   onGoogleLogin: () => void;
   onLogout: () => void;
+  onOpenGym?: () => void;
 }) {
-  const [view, setView] = useState<'account' | 'appearance'>('account');
+  const [view, setView] = useState<'account' | 'appearance' | 'achievements'>(
+    'account',
+  );
   const historySource = useHistorySource();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -86,11 +93,33 @@ export function ProfileView({
         value={view}
         onChange={setView}
         items={[
-          { id: 'account', label: 'Cuenta y datos' },
-          { id: 'appearance', label: 'Apariencia y tacto' },
+          { id: 'account', label: 'Cuenta' },
+          { id: 'appearance', label: 'Preferencias' },
+          { id: 'achievements', label: 'Logros' },
         ]}
       />
-      {view === 'appearance' ? (
+      {onOpenGym && view === 'account' ? (
+        <button
+          type="button"
+          className="my-5 flex min-h-20 w-full items-center gap-4 border-b border-border py-4 text-left"
+          onClick={onOpenGym}
+        >
+          <Dumbbell
+            className="size-6 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1">
+            <strong className="block">Mi gimnasio</strong>
+            <small className="text-muted-foreground">
+              Tu espacio de entrenamiento
+            </small>
+          </span>
+          <ArrowUpRight className="size-5 shrink-0" aria-hidden="true" />
+        </button>
+      ) : null}
+      {view === 'achievements' ? (
+        <ProfileAchievements state={state} editable={editable} />
+      ) : view === 'appearance' ? (
         <>
           <section className="mb-4 rounded-2xl border border-border bg-card p-5">
             <h2 className="font-bold">Apariencia</h2>

@@ -1,4 +1,6 @@
 import { CloudConflict, mergeStates } from './cloud-records.ts';
+import { accrueGym, applyGymCommand, createGym } from './gym/engine.ts';
+import type { GymCommand } from './gym/types.ts';
 import {
   defaultState,
   loadLocalState,
@@ -37,7 +39,18 @@ export function hasLocalData(state: AppState | null): state is AppState {
       state.mobilityDone.length ||
       state.warmupDone.length ||
       state.classes.length ||
-      state.activeWorkouts?.length),
+      state.activeWorkouts?.length ||
+      (state.gym &&
+        (Object.keys(state.gym.purchases).length ||
+          Object.keys(state.gym.achievementHistory?.records ?? {}).length ||
+          Object.values(state.gym.receipts).some(
+            (receipt) => !receipt.blocked,
+          ) ||
+          state.gym.avatar ||
+          JSON.stringify(state.gym.placements) !==
+            JSON.stringify(
+              createGym(defaultState, 'UTC', state.gym.startedAt).placements,
+            )))),
   );
 }
 
@@ -52,6 +65,19 @@ export function createLocalRepository() {
     load,
     loadAll: load,
     loadMonth: (_month: string) => load(),
+    gymCommand: async (command: GymCommand) => {
+      const saved = await updateLocalState((stored) => {
+        const current = stored ?? defaultState;
+        const next = applyGymCommand(current, command);
+        return {
+          ...next,
+          cloudRevision: (current.cloudRevision ?? 0) + 1,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      channel?.postMessage('saved');
+      return saved;
+    },
     save: async (
       state: AppState,
       _version: string | null,
@@ -59,11 +85,15 @@ export function createLocalRepository() {
     ) => {
       const saved = await updateLocalState((stored) => {
         const remote = stored ?? defaultState;
-        const merged = mergeStates(base, state, remote);
+        const merged = mergeStates(
+          { ...base, gym: remote.gym, gymArchive: remote.gymArchive },
+          { ...state, gym: remote.gym, gymArchive: remote.gymArchive },
+          remote,
+        );
         if (merged.conflicts.length)
           throw new CloudConflict(merged.conflicts, remote);
         const next = {
-          ...merged.state,
+          ...accrueGym(remote, merged.state),
           cloudRevision: (remote.cloudRevision ?? 0) + 1,
           updatedAt: new Date().toISOString(),
         };

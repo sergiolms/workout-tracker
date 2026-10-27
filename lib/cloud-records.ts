@@ -34,6 +34,9 @@ const collections = [
 ] as const;
 const memberships = ['mobilityDone', 'warmupDone', 'classes'] as const;
 const settings = [
+  'gym',
+  'gymArchive',
+  'gymExclusions',
   'week',
   'planName',
   'theme',

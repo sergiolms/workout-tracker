@@ -1,6 +1,7 @@
 import type { Exercise } from './workout-data';
 import type { HistoryCoverage } from './history-summary';
 import { statusFromLog } from './exercise-sets.ts';
+import type { GymState } from './gym/types.ts';
 
 export type SetLog = {
   reps: number;
@@ -36,6 +37,8 @@ export type ExerciseLog = {
 };
 export type WorkoutExerciseStatus = 'done' | 'partial' | 'skipped' | 'pending';
 export type WorkoutLog = {
+  gymTargetSets?: number;
+  gymExcluded?: boolean;
   source?: 'hevy' | 'manual';
   rotationId?: string;
   id: string;
@@ -51,6 +54,7 @@ export type WorkoutLog = {
   notes: string;
 };
 export type ActiveWorkout = {
+  plannedSets?: number;
   id: string;
   date: string;
   week: number;
@@ -59,6 +63,7 @@ export type ActiveWorkout = {
   finishedAt?: string;
 };
 export type CardioLog = {
+  gymExcluded?: boolean;
   id: string;
   date: string;
   type: string;
@@ -118,6 +123,9 @@ export type DeletedRecords = {
 };
 
 export type AppState = {
+  gym?: GymState;
+  gymArchive?: GymState;
+  gymExclusions?: string[];
   version: 3;
   updatedAt?: string;
   cloudRevision?: number;

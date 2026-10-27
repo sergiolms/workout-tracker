@@ -192,6 +192,15 @@ export function useWorkoutAccount() {
       setHistorySource({
         accountId: uid,
         client,
+        gymCommand: async (command) => {
+          await opened.flushLocal();
+          await opened.sync();
+          if (!opened.canEdit)
+            throw Error(
+              'Resuelve el guardado pendiente antes de modificar el gimnasio.',
+            );
+          return opened.hydrate(() => repository.gymCommand(command));
+        },
         loadMonth: (month) => opened.hydrate(() => repository.loadMonth(month)),
         loadAll: async () => {
           const full = await opened.hydrate(repository.loadAll);

@@ -1,5 +1,6 @@
 import { defaultState, migrateState, type AppState } from './storage.ts';
 import { equal } from './cloud-records.ts';
+import { mobilityId } from './gym/engine.ts';
 
 const historyKeys = [
   'workoutLogs',
@@ -290,6 +291,17 @@ export function parseBackup(text: string): AppState {
   };
 }
 
+function backupContent(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(backupContent);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== 'gymExcluded')
+        .map(([key, child]) => [key, backupContent(child)]),
+    );
+  return value;
+}
+
 export function backupPreview(current: AppState, incoming: AppState) {
   const records = historyKeys.map((key) => {
     const existing = new Map(
@@ -299,7 +311,9 @@ export function backupPreview(current: AppState, incoming: AppState) {
       (item) => !existing.has(item.id),
     ).length;
     const conflicts = (incoming[key] ?? []).filter(
-      (item) => existing.has(item.id) && !equal(existing.get(item.id), item),
+      (item) =>
+        existing.has(item.id) &&
+        !equal(backupContent(existing.get(item.id)), backupContent(item)),
     ).length;
     return {
       key,
@@ -329,6 +343,16 @@ export function importBackup(
   options: { includePlan: boolean; replaceConflicts: boolean },
 ): AppState {
   const result = { ...current };
+  if (current.gym)
+    result.gymExclusions = [
+      ...new Set([
+        ...(current.gymExclusions ?? []),
+        ...incoming.mobilityDone.flatMap((key) => {
+          const item = mobilityId(key);
+          return item ? [item.id] : [];
+        }),
+      ]),
+    ];
   for (const key of membershipKeys)
     result[key] = [...new Set([...current[key], ...incoming[key]])];
   for (const key of historyKeys) {
@@ -337,7 +361,12 @@ export function importBackup(
     );
     for (const item of incoming[key] ?? [])
       if (!merged.has(item.id) || options.replaceConflicts)
-        merged.set(item.id, item);
+        merged.set(
+          item.id,
+          key === 'workoutLogs' || key === 'cardioLogs'
+            ? { ...item, gymExcluded: true }
+            : item,
+        );
     Object.assign(result, { [key]: [...merged.values()] });
   }
   if (options.includePlan)

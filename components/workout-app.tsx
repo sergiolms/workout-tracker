@@ -23,6 +23,7 @@ import { MotionSurface } from '@/components/motion-surface';
 import { useSwipeNavigation } from '@/hooks/use-swipe-navigation';
 import { useInteractionFeedback } from '@/hooks/use-interaction-feedback';
 import { useWorkoutAccount } from '@/hooks/use-workout-account';
+import { useGymRoute } from '@/hooks/use-gym-route';
 import { useAppUpdates } from '@/hooks/use-app-updates';
 import { useSystemTheme } from '@/hooks/use-system-theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -50,8 +51,14 @@ const ProfileView = lazy(() =>
     default: module.ProfileView,
   })),
 );
+const GymApp = lazy(() =>
+  import('@/components/gym/gym-app').then((module) => ({
+    default: module.GymApp,
+  })),
+);
 
 export default function HomePage() {
+  const gymRoute = useGymRoute();
   const {
     historySource,
     state,
@@ -230,6 +237,7 @@ export default function HomePage() {
         cloudReady={cloudReady}
         onGoogleLogin={handleGoogleLogin}
         onLogout={handleLogout}
+        onOpenGym={gymRoute.enter}
         state={state}
         updateState={updateState}
         user={firebaseUser}
@@ -274,188 +282,216 @@ export default function HomePage() {
   return (
     <HistoryProvider value={historySource}>
       <DialogThemeProvider value={isDark}>
-        {localImport && mode === 'cloud' ? (
-          <LocalDataImport
-            state={state}
-            incoming={localImport}
-            editable={persistenceStatus.canEdit}
-            onImport={updateState}
-            onClose={dismissLocalImport}
-          />
-        ) : null}
-        <div className={isDark ? 'dark' : ''}>
-          <div
-            className="app-shell bg-background text-foreground"
-            data-rest-active={restDeadline !== null}
-          >
-            <a
-              href="#view-content"
-              className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3"
+        {gymRoute.open ? (
+          <div className={isDark ? 'dark' : ''}>
+            <Suspense
+              fallback={
+                <main className="min-h-dvh bg-background p-6 text-foreground">
+                  Abriendo tu gimnasio…
+                </main>
+              }
             >
-              Saltar al contenido
-            </a>
-            <main
-              id="app-content"
-              tabIndex={-1}
-              ref={contentScroll}
-              className="app-content"
-              {...swipeHandlers}
-            >
-              <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
-                <header className="app-header">
-                  <button
-                    className="app-brand"
-                    aria-label="Zero to Hero · ir a Hoy"
-                    onClick={() => setTab('today')}
-                    type="button"
-                  >
-                    <span className="app-brand-mark">
-                      <HeartPulse className="size-7" strokeWidth={2.4} />
-                    </span>
-                    <span className="brand-name">
-                      Zero <span className="brand-connector">to</span> Hero
-                    </span>
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <SaveStatus status={persistenceStatus} />
-                  </div>
-                </header>
-                <div id="view-content" tabIndex={-1}>
-                  <MotionSurface
-                    className="mx-auto max-w-[760px]"
-                    motionKey={tab}
-                    direction={viewDirection}
-                  >
-                    {updateAvailable ? (
-                      <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
-                        <span className="text-sm font-medium">
-                          Nueva versión disponible
-                        </span>
-                        <Button
-                          className="min-h-10 shrink-0 rounded-lg"
-                          onClick={() => window.location.reload()}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Actualizar
-                        </Button>
-                      </output>
-                    ) : null}
-                    {tab === 'timers' ? (
-                      <div className="section-heading">
-                        <div>
-                          <h1 className="page-title">Timer</h1>
-                          <p className="page-subtitle">
-                            Tu ritmo, sin distracciones
-                          </p>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className={tab === 'timers' ? '' : 'hidden'}>
-                      <WorkoutTimer />
-                    </div>
-                    {persistenceStatus.conflicts?.length ? (
-                      <SyncConflicts
-                        key={JSON.stringify(persistenceStatus.conflicts)}
-                        state={state}
-                        conflicts={persistenceStatus.conflicts}
-                        onResolve={resolveConflicts}
-                      />
-                    ) : persistenceStatus.error ? (
-                      <div
-                        role="alert"
-                        className="mb-4 rounded-xl border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 p-3 text-sm"
+              <ViewBoundary>
+                <GymApp
+                  state={state}
+                  editable={persistenceStatus.canEdit}
+                  localOnly={mode === 'local'}
+                  onBack={() => {
+                    gymRoute.leave();
+                    setTab('profile');
+                  }}
+                />
+              </ViewBoundary>
+            </Suspense>
+          </div>
+        ) : (
+          <>
+            {localImport && mode === 'cloud' ? (
+              <LocalDataImport
+                state={state}
+                incoming={localImport}
+                editable={persistenceStatus.canEdit}
+                onImport={updateState}
+                onClose={dismissLocalImport}
+              />
+            ) : null}
+            <div className={isDark ? 'dark' : ''}>
+              <div
+                className="app-shell bg-background text-foreground"
+                data-rest-active={restDeadline !== null}
+              >
+                <a
+                  href="#view-content"
+                  className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-background focus:p-3"
+                >
+                  Saltar al contenido
+                </a>
+                <main
+                  id="app-content"
+                  tabIndex={-1}
+                  ref={contentScroll}
+                  className="app-content"
+                  {...swipeHandlers}
+                >
+                  <div className="mx-auto max-w-[1180px] px-4 pb-6 pt-5 sm:px-7">
+                    <header className="app-header">
+                      <button
+                        className="app-brand"
+                        aria-label="Zero to Hero · ir a Hoy"
+                        onClick={() => setTab('today')}
+                        type="button"
                       >
-                        {persistenceStatus.local === 'error'
-                          ? 'No se ha podido guardar en este dispositivo.'
-                          : mode === 'local'
-                            ? 'No se ha confirmado el guardado local. Tus cambios siguen pendientes.'
-                            : 'No se ha confirmado la sincronización. Conservamos tus cambios pendientes.'}{' '}
-                        <span className="block text-xs">
-                          {persistenceStatus.error}
+                        <span className="app-brand-mark">
+                          <HeartPulse className="size-7" strokeWidth={2.4} />
                         </span>
-                        <Button
-                          className="mt-3 min-h-11"
-                          variant="outline"
-                          onClick={() => void retrySync()}
-                          disabled={syncing}
-                        >
-                          {syncing ? 'Reintentando…' : 'Reintentar'}
-                        </Button>
+                        <span className="brand-name">
+                          Zero <span className="brand-connector">to</span> Hero
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <SaveStatus status={persistenceStatus} />
                       </div>
-                    ) : null}
-                    {!persistenceStatus.canEdit && !persistenceStatus.error ? (
-                      <output className="mb-4 block text-sm text-muted-foreground">
-                        {mode === 'local'
-                          ? 'Abriendo el guardado local…'
-                          : 'Conectando con tu cuenta. La copia local se muestra en modo lectura.'}
-                      </output>
-                    ) : null}
-                    <ViewBoundary key={tab}>
-                      <Suspense
-                        fallback={
-                          <output className="block py-6 text-sm text-muted-foreground">
-                            Cargando vista…
+                    </header>
+                    <div id="view-content" tabIndex={-1}>
+                      <MotionSurface
+                        className="mx-auto max-w-[760px]"
+                        motionKey={tab}
+                        direction={viewDirection}
+                      >
+                        {updateAvailable ? (
+                          <output className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3">
+                            <span className="text-sm font-medium">
+                              Nueva versión disponible
+                            </span>
+                            <Button
+                              className="min-h-10 shrink-0 rounded-lg"
+                              onClick={() => window.location.reload()}
+                              size="sm"
+                              variant="outline"
+                            >
+                              Actualizar
+                            </Button>
                           </output>
-                        }
-                      >
-                        <fieldset
-                          disabled={
-                            !persistenceStatus.canEdit && tab !== 'profile'
-                          }
-                          className="min-w-0"
-                        >
-                          {tab === 'timers' ? null : tab === 'profile' ? (
-                            <ProfileView
-                              editable={persistenceStatus.canEdit}
-                              authBusy={authBusy}
-                              authError={authError}
-                              cloudReady={cloudReady}
-                              onGoogleLogin={handleGoogleLogin}
-                              onLogout={handleLogout}
-                              state={state}
-                              updateState={updateState}
-                              user={firebaseUser}
-                            />
-                          ) : (
-                            content
-                          )}
-                        </fieldset>
-                      </Suspense>
-                    </ViewBoundary>
-                  </MotionSurface>
+                        ) : null}
+                        {tab === 'timers' ? (
+                          <div className="section-heading">
+                            <div>
+                              <h1 className="page-title">Timer</h1>
+                              <p className="page-subtitle">
+                                Tu ritmo, sin distracciones
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className={tab === 'timers' ? '' : 'hidden'}>
+                          <WorkoutTimer />
+                        </div>
+                        {persistenceStatus.conflicts?.length ? (
+                          <SyncConflicts
+                            key={JSON.stringify(persistenceStatus.conflicts)}
+                            state={state}
+                            conflicts={persistenceStatus.conflicts}
+                            onResolve={resolveConflicts}
+                          />
+                        ) : persistenceStatus.error ? (
+                          <div
+                            role="alert"
+                            className="mb-4 rounded-xl border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 p-3 text-sm"
+                          >
+                            {persistenceStatus.local === 'error'
+                              ? 'No se ha podido guardar en este dispositivo.'
+                              : mode === 'local'
+                                ? 'No se ha confirmado el guardado local. Tus cambios siguen pendientes.'
+                                : 'No se ha confirmado la sincronización. Conservamos tus cambios pendientes.'}{' '}
+                            <span className="block text-xs">
+                              {persistenceStatus.error}
+                            </span>
+                            <Button
+                              className="mt-3 min-h-11"
+                              variant="outline"
+                              onClick={() => void retrySync()}
+                              disabled={syncing}
+                            >
+                              {syncing ? 'Reintentando…' : 'Reintentar'}
+                            </Button>
+                          </div>
+                        ) : null}
+                        {!persistenceStatus.canEdit &&
+                        !persistenceStatus.error ? (
+                          <output className="mb-4 block text-sm text-muted-foreground">
+                            {mode === 'local'
+                              ? 'Abriendo el guardado local…'
+                              : 'Conectando con tu cuenta. La copia local se muestra en modo lectura.'}
+                          </output>
+                        ) : null}
+                        <ViewBoundary key={tab}>
+                          <Suspense
+                            fallback={
+                              <output className="block py-6 text-sm text-muted-foreground">
+                                Cargando vista…
+                              </output>
+                            }
+                          >
+                            <fieldset
+                              disabled={
+                                !persistenceStatus.canEdit && tab !== 'profile'
+                              }
+                              className="min-w-0"
+                            >
+                              {tab === 'timers' ? null : tab === 'profile' ? (
+                                <ProfileView
+                                  editable={persistenceStatus.canEdit}
+                                  authBusy={authBusy}
+                                  authError={authError}
+                                  cloudReady={cloudReady}
+                                  onGoogleLogin={handleGoogleLogin}
+                                  onLogout={handleLogout}
+                                  onOpenGym={gymRoute.enter}
+                                  state={state}
+                                  updateState={updateState}
+                                  user={firebaseUser}
+                                />
+                              ) : (
+                                content
+                              )}
+                            </fieldset>
+                          </Suspense>
+                        </ViewBoundary>
+                      </MotionSurface>
+                    </div>
+                  </div>
+                </main>
+                {undo ? (
+                  <UndoNotice
+                    key={undo.id}
+                    message={undo.message}
+                    onDismiss={dismissUndo}
+                    onUndo={() => {
+                      if (persistenceStatus.canEdit) undo.action();
+                    }}
+                  />
+                ) : null}
+
+                {restDeadline !== null ? (
+                  <RestDock
+                    key={restDeadline}
+                    deadline={restDeadline}
+                    onDismiss={stopRest}
+                  />
+                ) : null}
+                <div className="bottom-nav">
+                  <div className="mx-auto max-w-[680px]">
+                    <LiquidNavigation
+                      items={navItems}
+                      active={tab}
+                      onSelect={selectView}
+                    />
+                  </div>
                 </div>
               </div>
-            </main>
-            {undo ? (
-              <UndoNotice
-                key={undo.id}
-                message={undo.message}
-                onDismiss={dismissUndo}
-                onUndo={() => {
-                  if (persistenceStatus.canEdit) undo.action();
-                }}
-              />
-            ) : null}
-
-            {restDeadline !== null ? (
-              <RestDock
-                key={restDeadline}
-                deadline={restDeadline}
-                onDismiss={stopRest}
-              />
-            ) : null}
-            <div className="bottom-nav">
-              <div className="mx-auto max-w-[680px]">
-                <LiquidNavigation
-                  items={navItems}
-                  active={tab}
-                  onSelect={selectView}
-                />
-              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </DialogThemeProvider>
     </HistoryProvider>
   );

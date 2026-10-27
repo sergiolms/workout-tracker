@@ -30,7 +30,18 @@ export function createAccountSession(
       localOnly ? Promise.resolve() : saveLocalState(state, uid),
     backup: (state, source) =>
       localOnly ? Promise.resolve() : backupLocalState(state, uid, source),
-    loadCloud: repository.load,
+    loadCloud: async () => {
+      const state = await repository.load();
+      if (state && !state.gym && repository.gymCommand) {
+        return repository.gymCommand({
+          type: 'activate',
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        });
+      }
+      if (state?.gym && !state.gym.achievementHistory && repository.gymCommand)
+        return repository.gymCommand({ type: 'backfill-achievements' });
+      return state;
+    },
     loadFullCloud: repository.loadAll,
     saveCloud: repository.save,
     subscribeCloud: repository.subscribe,

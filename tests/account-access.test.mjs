@@ -1,3 +1,4 @@
+import { applyGymCommand, gymProgress } from '../lib/gym/engine.ts';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -36,6 +37,7 @@ test('the React account flow supports local access, reload, explicit cloud impor
   let signInCalls = 0;
   let loginError;
   let writes = 0;
+  let gymWrites = 0;
   const user = {
     uid: 'cloud-user',
     displayName: 'Test',
@@ -61,6 +63,13 @@ test('the React account flow supports local access, reload, explicit cloud impor
       authListener?.(null);
     },
     repository: (uid) => ({
+      gymCommand: async (command) => {
+        gymWrites++;
+        const next = applyGymCommand(cloud.get(uid), command);
+        next.cloudRevision = (cloud.get(uid)?.cloudRevision ?? 0) + 1;
+        cloud.set(uid, next);
+        return structuredClone(next);
+      },
       load: async () => structuredClone(cloud.get(uid)),
       loadAll: async () => structuredClone(cloud.get(uid)),
       loadMonth: async () => structuredClone(cloud.get(uid)),
@@ -263,6 +272,12 @@ test('the React account flow supports local access, reload, explicit cloud impor
     );
     assert.equal(account.state.planName, 'Cloud plan');
     assert.deepEqual(account.state.cardioLogs, [cloudActivity]);
+    assert.equal(gymWrites, 1, 'cloud progress starts once automatically');
+    assert.equal(
+      gymProgress(account.state.gym).balance,
+      0,
+      'existing cloud history is not rewarded again',
+    );
     assert.equal(
       writes,
       0,

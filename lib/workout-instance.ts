@@ -24,7 +24,20 @@ export function startWorkout(
     return state;
   return {
     ...state,
-    activeWorkouts: [...(state.activeWorkouts ?? []), workout],
+    activeWorkouts: [
+      ...(state.activeWorkouts ?? []),
+      {
+        ...workout,
+        plannedSets:
+          workout.plannedSets ??
+          state.sessions
+            .find((session) => session.id === workout.routine)
+            ?.exercises.reduce(
+              (total, exercise) => total + Math.max(0, exercise.sets),
+              0,
+            ),
+      },
+    ],
   };
 }
 

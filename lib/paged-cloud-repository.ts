@@ -20,6 +20,8 @@ import {
 } from './history-summary.ts';
 import type { AppState } from './storage.ts';
 import { sameExercise } from './exercise-identity.ts';
+import { accrueGym, applyGymCommand } from './gym/engine.ts';
+import type { GymCommand } from './gym/types.ts';
 
 const HEADER = 'appState/records-v1';
 const corePrefixes = [
@@ -440,7 +442,9 @@ export class PagedCloudRepository {
     const before = stateRecords(base),
       local = stateRecords(state);
     const changed = [...new Set([...before.keys(), ...local.keys()])].filter(
-      (key) => !equal(before.get(key), local.get(key)),
+      (key) =>
+        !['setting:gym', 'setting:gymArchive'].includes(key) &&
+        !equal(before.get(key), local.get(key)),
     );
     let batch: string[] = [],
       size = 0;
@@ -534,6 +538,12 @@ export class PagedCloudRepository {
             this.snapshot().history,
           ),
         );
+      const beforeRewards = recordsState(
+        records,
+        header.updatedAt,
+        header.sequence,
+        this.snapshot().history,
+      );
       for (const { key, value } of next) {
         if (value === undefined) records.delete(key);
         else records.set(key, value);
@@ -544,6 +554,15 @@ export class PagedCloudRepository {
         header.sequence,
         this.snapshot().history,
       );
+      const rewarded = accrueGym(beforeRewards, completeMonths);
+      if (!equal(rewarded.gym, beforeRewards.gym)) {
+        records.set('setting:gym', rewarded.gym);
+        next.push({
+          key: 'setting:gym',
+          value: rewarded.gym,
+          old: beforeRewards.gym,
+        });
+      }
       const summaries = [...months].map((month) => ({
         key: `summary:${month}`,
         value: summarizeHistoryMonth(completeMonths, month),
@@ -595,6 +614,66 @@ export class PagedCloudRepository {
       'Otros dispositivos están guardando cambios. Reintenta en unos segundos.',
     );
   }
+  gymCommand = async (command: GymCommand) => {
+    if (command.type === 'activate' || command.type === 'backfill-achievements')
+      await this.loadAll();
+    return this.schedule(async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await this.refresh();
+        const header = this.header!;
+        const current = this.snapshot();
+        const next = applyGymCommand(current, command);
+        if (equal(next.gym, current.gym)) return current;
+        const sequence = header.sequence + 1;
+        const rows: StoredRecord[] = [
+          { key: 'setting:gym', value: next.gym, deleted: false, sequence },
+          ...(next.gymArchive !== current.gymArchive && next.gymArchive
+            ? [
+                {
+                  key: 'setting:gymArchive',
+                  value: next.gymArchive,
+                  deleted: false,
+                  sequence,
+                },
+              ]
+            : []),
+        ];
+        for (const row of rows)
+          if (new TextEncoder().encode(JSON.stringify(row)).length > 900000)
+            throw Error(
+              'El gimnasio supera el tamaño permitido. Exporta una copia antes de continuar.',
+            );
+        try {
+          await this.database.transaction(async (tx) => {
+            const latest = (await tx.get(HEADER)) as CloudHeader;
+            if (
+              latest.collection !== header.collection ||
+              latest.sequence !== header.sequence
+            )
+              throw new RetryWrite();
+            for (const row of rows)
+              tx.set(`${header.collection}/${idFor(row.key)}`, row);
+            tx.set(HEADER, {
+              ...latest,
+              sequence,
+              updatedAt: new Date().toISOString(),
+            });
+          });
+          for (const row of rows) this.records.set(row.key, row.value);
+          this.header = {
+            ...header,
+            sequence,
+            updatedAt: new Date().toISOString(),
+          };
+          this.generation++;
+          return this.snapshot();
+        } catch (error) {
+          if (!(error instanceof RetryWrite)) throw error;
+        }
+      }
+      throw Error('El gimnasio ha cambiado en otro dispositivo. Reintenta.');
+    });
+  };
   subscribe = (
     change: (state: AppState) => void,
     error: (reason: unknown) => void,
