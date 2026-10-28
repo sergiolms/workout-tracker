@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { ProfileAchievements } from '@/components/profile-achievements';
+import { IsometricScene } from '@/components/gym/isometric-scene';
+import '@/components/gym/gym.css';
 import { Button } from '@/components/ui/button';
 import { firebaseConfigured, type FirebaseUser } from '@/lib/firebase';
 import { type AppState } from '@/lib/storage';
@@ -99,23 +101,28 @@ export function ProfileView({
         ]}
       />
       {onOpenGym && view === 'account' ? (
-        <button
-          type="button"
-          className="my-5 flex min-h-20 w-full items-center gap-4 border-b border-border py-4 text-left"
-          onClick={onOpenGym}
+        <section
+          className="gym-shell my-5 overflow-hidden rounded-2xl border border-border bg-card p-4"
+          aria-label="Vista previa de mi gimnasio"
         >
-          <Dumbbell
-            className="size-6 shrink-0 text-primary"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1">
-            <strong className="block">Mi gimnasio</strong>
-            <small className="text-muted-foreground">
-              Tu espacio de entrenamiento
-            </small>
-          </span>
-          <ArrowUpRight className="size-5 shrink-0" aria-hidden="true" />
-        </button>
+          <h2 className="flex items-center gap-2 font-semibold">
+            <Dumbbell className="size-5 text-primary" aria-hidden="true" /> Mi
+            gimnasio
+          </h2>
+          {state.gym ? (
+            <div className="mx-auto max-w-md pointer-events-none">
+              <IsometricScene gym={state.gym} room="main" living />
+            </div>
+          ) : (
+            <p className="my-5 text-sm text-muted-foreground">
+              Crea tu gimnasio y decóralo con tu progreso.
+            </p>
+          )}
+          <Button className="min-h-11 w-full" onClick={onOpenGym}>
+            Acceder a gimnasio{' '}
+            <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Button>
+        </section>
       ) : null}
       {view === 'achievements' ? (
         <ProfileAchievements state={state} editable={editable} />

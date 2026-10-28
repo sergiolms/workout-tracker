@@ -32,6 +32,15 @@ export function AvatarFigure({
   const woman = appearance.body === 'woman';
   const seated = action === 'cycle' || action === 'press';
   const squat = action === 'squat';
+  const armsInFront = [
+    'train',
+    'stretch',
+    'press',
+    'pull',
+    'cycle',
+    'run',
+    'drink',
+  ].includes(action);
   const shorts = bottom === 'shorts';
   const longSleeves = ['jacket', 'hoodie', 'compression'].includes(top);
   const sleeveless = top === 'tank' || top === 'crop';
@@ -276,9 +285,10 @@ export function AvatarFigure({
             fill={shade(shirt, 0.78)}
           />
         )}
-        {/* Both complete arms are behind the torso; skin cannot erase a sleeve. */}
-        {arm(-1)}
-        {arm(1)}
+        {/* Resting arms sit behind the shirt; active arms and their sleeves
+            cross in front of it, so a curl cannot disappear into the torso. */}
+        {!armsInFront && arm(-1)}
+        {!armsInFront && arm(1)}
         <path d="M-2.6-48.5v7Q0-38.8 2.6-41.5v-7Z" fill={skin} />
         <path
           d="M-2.6-48.5h5.2v2.5Q0-44.9-2.6-46Z"
@@ -367,6 +377,8 @@ export function AvatarFigure({
             )}
           </g>
         </g>
+        {armsInFront && arm(-1)}
+        {armsInFront && arm(1)}
         <g className="gym-avatar-head">
           <ellipse cx="-6.4" cy="-54" rx="1.6" ry="2.1" fill={skin} />
           <ellipse

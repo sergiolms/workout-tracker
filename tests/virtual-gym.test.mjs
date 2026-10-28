@@ -144,7 +144,7 @@ test('the actual app opens a separate gym from Profile, persists purchases local
     await click('Perfil');
     await settle(() => text().includes('Mi gimnasio'), 'profile launcher');
     const launcher = [...document.querySelectorAll('button')].find((el) =>
-      el.textContent.includes('Mi gimnasio'),
+      el.textContent.includes('Acceder a gimnasio'),
     );
     await act(async () => launcher.click());
     await settle(
@@ -323,7 +323,7 @@ test('the actual app opens a separate gym from Profile, persists purchases local
     await settle(() => text().includes('Mi gimnasio'), 'profile after reload');
     await act(async () =>
       [...document.querySelectorAll('button')]
-        .find((el) => el.textContent.includes('Mi gimnasio'))
+        .find((el) => el.textContent.includes('Acceder a gimnasio'))
         .click(),
     );
     await settle(

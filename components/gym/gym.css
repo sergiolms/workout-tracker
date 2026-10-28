@@ -591,3 +591,82 @@
 .gym-avatar[data-action='run'] .gym-avatar-arm.right {
   transform-origin: 30% 10%;
 }
+
+/* A walking cycle keeps the feet close to the floor; the larger stride is
+   reserved for running. Arms counterbalance the opposite leg at the shoulder. */
+.gym-avatar[data-action='walk'] .gym-avatar-leg.left {
+  animation: gym-walk-leg 900ms ease-in-out infinite;
+  transform-origin: 50% 0;
+}
+.gym-avatar[data-action='walk'] .gym-avatar-leg.right {
+  animation: gym-walk-leg 900ms ease-in-out infinite;
+  animation-delay: -450ms;
+  transform-origin: 50% 0;
+}
+.gym-avatar[data-action='walk'] .gym-avatar-arm.left {
+  animation: gym-walk-arm 900ms ease-in-out infinite;
+  animation-delay: -450ms;
+  transform-origin: 75% 5%;
+}
+.gym-avatar[data-action='walk'] .gym-avatar-arm.right {
+  animation: gym-walk-arm 900ms ease-in-out infinite;
+  transform-origin: 25% 5%;
+}
+.gym-avatar[data-action='walk'] .gym-avatar-upper {
+  animation: gym-walk-body 450ms ease-in-out infinite;
+}
+.gym-avatar[data-action='walk'] .gym-avatar-ponytail {
+  animation: gym-walk-hair 900ms ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 90% 10%;
+}
+@keyframes gym-walk-leg {
+  0%,
+  100% {
+    rotate: -3deg;
+    translate: 0 0;
+    scale: 1 1;
+  }
+  25% {
+    rotate: 0deg;
+    translate: 0 -1px;
+    scale: 1 0.98;
+  }
+  50% {
+    rotate: 3deg;
+    translate: 0 0;
+    scale: 1 1;
+  }
+  75% {
+    rotate: 0deg;
+    translate: 0 0;
+    scale: 1 1;
+  }
+}
+@keyframes gym-walk-arm {
+  0%,
+  100% {
+    rotate: -7deg;
+  }
+  50% {
+    rotate: 7deg;
+  }
+}
+@keyframes gym-walk-body {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -0.55px;
+  }
+}
+@keyframes gym-walk-hair {
+  0%,
+  100% {
+    rotate: -3deg;
+  }
+  50% {
+    rotate: 3deg;
+  }
+}
