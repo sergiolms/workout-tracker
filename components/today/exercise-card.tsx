@@ -1,4 +1,5 @@
 'use client';
+import { ReplaceExercise } from '@/components/today/replace-exercise';
 import type { TodaySession } from '@/hooks/use-today-session';
 import { Check, ChevronLeft, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -119,6 +120,7 @@ export function TodayExerciseCard({ session }: { session: TodaySession }) {
         </div>
 
         <div className="p-4 sm:p-5">
+          <ReplaceExercise session={session} />
           <Button
             variant="ghost"
             className="mb-3 min-h-11 px-0 underline underline-offset-4"

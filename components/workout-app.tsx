@@ -12,11 +12,7 @@ import { countsTowardPlan, nextPlanSession } from '@/lib/plan-progress';
 import { type ExerciseLog, type WorkoutLog } from '@/lib/storage';
 import { SyncConflicts } from '@/components/sync-conflicts';
 
-import {
-  RestDock,
-  SaveStatus,
-  UndoNotice,
-} from '@/components/workout-feedback';
+import { RestDock, SaveStatus } from '@/components/workout-feedback';
 import { restDuration } from '@/lib/rest-preferences';
 import { LiquidNavigation } from '@/components/liquid-navigation';
 import { MotionSurface } from '@/components/motion-surface';
@@ -29,6 +25,9 @@ import { useSystemTheme } from '@/hooks/use-system-theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { WorkoutTimer } from '@/components/views/timer-view';
 import { ViewBoundary } from '@/components/view-boundary';
+import { useKeyboardViewport } from '@/hooks/use-keyboard-viewport';
+import { activeWorkout, startWorkout } from '@/lib/workout-instance';
+import { localDateKey, uid } from '@/lib/local-date';
 import { nextRotationRoutine } from '@/lib/rotation';
 
 const TodayView = lazy(() =>
@@ -59,6 +58,7 @@ const GymApp = lazy(() =>
 
 export default function HomePage() {
   const gymRoute = useGymRoute();
+  useKeyboardViewport();
   const {
     historySource,
     state,
@@ -89,21 +89,10 @@ export default function HomePage() {
   const [trainingNotice, setTrainingNotice] = useState('');
   const updateAvailable = useAppUpdates();
   const [restDeadline, setRestDeadline] = useState<number | null>(null);
-  const [undo, setUndo] = useState<{
-    id: number;
-    message: string;
-    action: () => void;
-  } | null>(null);
   const stopRest = useCallback(() => setRestDeadline(null), []);
   const startRest = useCallback(
     (seconds: number) =>
       setRestDeadline(Date.now() + restDuration(seconds) * 1000),
-    [],
-  );
-  const dismissUndo = useCallback(() => setUndo(null), []);
-  const offerUndo = useCallback(
-    (message: string, action: () => void) =>
-      setUndo({ id: Date.now(), message, action }),
     [],
   );
   const contentScroll = useRef<HTMLElement>(null);
@@ -120,6 +109,7 @@ export default function HomePage() {
   const selectView = useCallback(
     (id: Tab, direction: -1 | 0 | 1 = 0) => {
       if (id !== tab) {
+        if (tab === 'today') setPreferredRoutine('');
         setViewDirection(direction);
         setTab(id);
       }
@@ -139,7 +129,16 @@ export default function HomePage() {
     setPreferredRoutine(routine);
     setTrainingNotice('');
     updateState((current) =>
-      current.week === week ? current : { ...current, week },
+      startWorkout(
+        { ...current, week },
+        activeWorkout(current, week, routine) ?? {
+          id: uid(),
+          date: localDateKey(),
+          week,
+          routine,
+          startedAt: new Date().toISOString(),
+        },
+      ),
     );
     setTab('today');
     scrollContentToTop();
@@ -214,8 +213,6 @@ export default function HomePage() {
         notice={trainingNotice}
         onStartRest={startRest}
         onStopRest={stopRest}
-        onOfferUndo={offerUndo}
-        onClearUndo={dismissUndo}
       />
     ) : tab === 'plan' ? (
       <PlanView
@@ -461,17 +458,6 @@ export default function HomePage() {
                     </div>
                   </div>
                 </main>
-                {undo ? (
-                  <UndoNotice
-                    key={undo.id}
-                    message={undo.message}
-                    onDismiss={dismissUndo}
-                    onUndo={() => {
-                      if (persistenceStatus.canEdit) undo.action();
-                    }}
-                  />
-                ) : null}
-
                 {restDeadline !== null ? (
                   <RestDock
                     key={restDeadline}

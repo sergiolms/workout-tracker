@@ -12,13 +12,14 @@ import {
   type ExerciseLog,
   type WorkoutLog,
 } from '@/lib/storage';
-import { activeWorkout, startWorkout } from '@/lib/workout-instance';
+import {
+  activeWorkout,
+  cancelWorkout,
+  startWorkout,
+} from '@/lib/workout-instance';
 import { exerciseSets, workingSets } from '@/lib/exercise-sets';
 import { statusFromLog } from '@/lib/workout-history';
-import {
-  previousExerciseLog,
-  undoSkippedExercise,
-} from '@/lib/workout-experience';
+import { previousExerciseLog } from '@/lib/workout-experience';
 import { exercisePrescription } from '@/lib/exercise-prescription';
 import {
   exerciseRecommendation,
@@ -36,15 +37,6 @@ import {
   sameExercise,
 } from '@/lib/exercise-identity';
 import { nextRotationRoutine, rotationRoutines } from '@/lib/rotation';
-function markSessionStarted(key: string) {
-  try {
-    if (!localStorage.getItem(key))
-      localStorage.setItem(key, String(Date.now()));
-  } catch {
-    /* Optional elapsed-time hint. */
-  }
-}
-
 const FALLBACK_EXERCISE: Exercise = {
   name: '',
   target: '',
@@ -66,14 +58,10 @@ export function useTodaySession({
   notice,
   onStartRest,
   onStopRest,
-  onOfferUndo,
-  onClearUndo,
 }: {
   accountId: string;
-  onClearUndo: () => void;
   onStartRest: (seconds: number) => void;
   onStopRest: () => void;
-  onOfferUndo: (message: string, action: () => void) => void;
   editable: boolean;
   state: AppState;
   updateState: (updater: (state: AppState) => AppState) => void;
@@ -113,13 +101,24 @@ export function useTodaySession({
     [state.sessions],
   );
   const routineIds = useMemo(
-    () => (weekPlan?.routines ?? []).filter((id) => sessionById.has(id)),
-    [sessionById, weekPlan],
+    () =>
+      [
+        ...new Set([
+          ...(weekPlan?.routines ?? []),
+          ...(state.activeWorkouts ?? [])
+            .filter((w) => w.week === state.week && !w.finishedAt)
+            .map((w) => w.routine),
+        ]),
+      ].filter((id) => sessionById.has(id)),
+    [sessionById, weekPlan, state.activeWorkouts, state.week],
   );
   const [routineId, setRoutineId] = useState<string>(
     preferredRoutine && routineIds.includes(preferredRoutine)
       ? preferredRoutine
-      : (nextRotationRoutine(state) ??
+      : ([...(state.activeWorkouts ?? [])]
+          .filter((w) => w.week === state.week && !w.finishedAt)
+          .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]?.routine ??
+          nextRotationRoutine(state) ??
           routineIds.find(
             (id) => !completedPlanSlots(state).has(`${state.week}:${id}`),
           ) ??
@@ -127,11 +126,12 @@ export function useTodaySession({
           ''),
   );
   const [exerciseIndex, setExerciseIndex] = useState(0);
-  const sessionExercises = sessionById.get(routineId)?.exercises ?? [];
-  const templateExercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
   const day = localDateKey();
   const [instanceSeed, setInstanceSeed] = useState(uid);
   const resumedWorkout = activeWorkout(state, state.week, routineId);
+  const sessionExercises =
+    resumedWorkout?.exercises ?? sessionById.get(routineId)?.exercises ?? [];
+  const templateExercise = sessionExercises[exerciseIndex] ?? FALLBACK_EXERCISE;
   const workoutId = resumedWorkout?.id ?? `${instanceSeed}:${routineId}`;
   const savedWorkout = state.workoutLogs.find((log) => log.id === workoutId);
   const routineLogs = state.exerciseLogs.filter(
@@ -234,7 +234,6 @@ export function useTodaySession({
           : session,
       ),
     }));
-  const sessionStartKey = `base-session-start:${accountId}:${workoutId}`;
   const ensureStarted = () =>
     updateState((current) =>
       startWorkout(current, {
@@ -246,27 +245,34 @@ export function useTodaySession({
       }),
     );
 
+  const startedAt = resumedWorkout?.startedAt;
+  const [clock, setClock] = useState(Date.now);
+  useEffect(() => {
+    if (!startedAt) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  const elapsedSeconds = resumedWorkout
+    ? Math.max(
+        0,
+        Math.floor((clock - Date.parse(resumedWorkout.startedAt)) / 1000),
+      )
+    : 0;
+  const cancelSession = () => {
+    if (!editable) return;
+    updateState((current) => cancelWorkout(current, workoutId));
+    onStopRest();
+    setInstanceSeed(uid());
+    setExerciseIndex(0);
+  };
   const [reviewMinutes, setReviewMinutes] = useState<number | null>(null);
   const exerciseCard = useRef<HTMLElement>(null);
   const toggleSets = (next: boolean[], rest: boolean) => {
-    const before = [...completed];
-    const index = exerciseIndex;
-    markSessionStarted(sessionStartKey);
     ensureStarted();
     setCompleted(() => next);
     if (rest && exerciseRestPreferences(exercise, state).enabled)
       onStartRest(exerciseRestPreferences(exercise, state).seconds);
     else if (!rest) onStopRest();
-    onOfferUndo(
-      next.some((done, i) => done && !completed[i])
-        ? 'Serie marcada'
-        : 'Series actualizadas',
-      () => {
-        setCompleted(() => before);
-        setExerciseIndex(index);
-        onStopRest();
-      },
-    );
   };
   const jumpToExercise = (index: number) => {
     setExerciseIndex(index);
@@ -298,9 +304,7 @@ export function useTodaySession({
 
   const commitExercise = (done: boolean[]) => {
     if (!editable) return;
-    onClearUndo();
     ensureStarted();
-    markSessionStarted(sessionStartKey);
     const confirmedSets = sets.map((set, index) => ({
       ...set,
       done: Boolean(done[index]),
@@ -333,12 +337,6 @@ export function useTodaySession({
   const skipExercise = () => {
     if (!editable) return;
     ensureStarted();
-    markSessionStarted(sessionStartKey);
-    const previous = routineLogs.find(
-      (item) => item.exercise === exercise.name,
-    );
-    const previousWorkouts = state.workoutLogs;
-    const index = exerciseIndex;
     const log = exerciseLogDraft(
       {
         exercise,
@@ -355,13 +353,6 @@ export function useTodaySession({
     );
     updateState((current) => saveExerciseLog(current, log));
     onStopRest();
-    onOfferUndo('Ejercicio omitido', () => {
-      updateState((current) =>
-        undoSkippedExercise(current, log, previous, previousWorkouts),
-      );
-      setExerciseIndex(index);
-      setSaved(false);
-    });
     setExerciseIndex((current) =>
       Math.min(current + 1, sessionExercises.length - 1),
     );
@@ -383,12 +374,6 @@ export function useTodaySession({
       new Date().toISOString(),
     );
     onStopRest();
-    onClearUndo();
-    try {
-      localStorage.removeItem(sessionStartKey);
-    } catch {
-      /* Optional elapsed hint. */
-    }
     setFinishReview(false);
     onFinish(workout, currentExerciseLog);
     setInstanceSeed(uid());
@@ -416,6 +401,8 @@ export function useTodaySession({
       window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   return {
+    elapsedSeconds,
+    cancelSession,
     accountId,
     editable,
     state,
@@ -426,8 +413,6 @@ export function useTodaySession({
     notice,
     onStartRest,
     onStopRest,
-    onOfferUndo,
-    onClearUndo,
     today,
     compact,
     weekPlan,
@@ -459,7 +444,6 @@ export function useTodaySession({
     description,
     rest,
     changeRest,
-    sessionStartKey,
     ensureStarted,
     exerciseCard,
     toggleSets,
