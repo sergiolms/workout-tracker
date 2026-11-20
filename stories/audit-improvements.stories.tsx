@@ -126,8 +126,6 @@ function Example({
           notice=""
           onStartRest={() => {}}
           onStopRest={() => {}}
-          onOfferUndo={() => {}}
-          onClearUndo={() => {}}
         />
       ) : (
         <ProgressView state={state} editable updateState={setState} />

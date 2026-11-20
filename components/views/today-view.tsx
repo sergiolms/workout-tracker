@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { useTodaySession } from '@/hooks/use-today-session';
 import { TodayExerciseCard } from '@/components/today/exercise-card';
 import { WarmupCard } from '@/components/today/warmup-card';
@@ -23,13 +24,13 @@ import { ProgressRing } from '@/components/progress-ring';
 import { TodayActivities } from '@/components/today-activities';
 export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
   const session = useTodaySession(props);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const {
     editable,
     state,
     updateState,
     onOpenSessions,
     notice,
-    onClearUndo,
     today,
     weekPlan,
     sessionById,
@@ -40,7 +41,6 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
     exercise,
     completed,
     setCompleted,
-    sessionStartKey,
     jumpToExercise,
     commitExercise,
     finishWorkout,
@@ -204,7 +204,6 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
                   aria-pressed={routineId === id}
                   className={`min-h-11 shrink-0 rounded-lg px-3 text-xs font-bold ${routineId === id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
                   onClick={() => {
-                    onClearUndo();
                     setRoutineId(id);
                     setExerciseIndex(0);
                   }}
@@ -241,6 +240,69 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
         />
       </section>
 
+      <section
+        className="surface rounded-2xl border border-border p-4"
+        aria-label="Sesión actual"
+      >
+        <p className="eyebrow">Sesión actual</p>
+        <h2 className="mt-1 text-lg font-bold">
+          {sessionById.get(routineId)?.name ?? routineId}
+        </h2>
+        {session.resumedWorkout ? (
+          <>
+            <p className="my-2 font-mono text-2xl" aria-label="Tiempo activo">
+              {Math.floor(session.elapsedSeconds / 3600)
+                .toString()
+                .padStart(2, '0')}
+              :
+              {Math.floor((session.elapsedSeconds / 60) % 60)
+                .toString()
+                .padStart(2, '0')}
+              :{(session.elapsedSeconds % 60).toString().padStart(2, '0')}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  setReviewMinutes(
+                    Math.max(1, Math.round(session.elapsedSeconds / 60)),
+                  );
+                  setFinishReview(true);
+                }}
+              >
+                Finalizar sesión
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmCancel(true)}>
+                Cancelar sesión
+              </Button>
+            </div>
+          </>
+        ) : (
+          <Button className="mt-3" onClick={session.ensureStarted}>
+            Empezar sesión
+          </Button>
+        )}
+      </section>
+      <Dialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <DialogContent>
+          <DialogTitle>¿Cancelar esta sesión?</DialogTitle>
+          <DialogDescription>
+            Se descartarán las series registradas en esta sesión. El plan y los
+            entrenamientos anteriores se conservan.
+          </DialogDescription>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              session.cancelSession();
+              setConfirmCancel(false);
+            }}
+          >
+            Descartar sesión
+          </Button>
+          <Button variant="outline" onClick={() => setConfirmCancel(false)}>
+            Seguir entrenando
+          </Button>
+        </DialogContent>
+      </Dialog>
       <WarmupCard state={state} updateState={updateState} />
 
       <section
@@ -269,15 +331,9 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
           variant="outline"
           className="h-14 shrink-0 rounded-xl px-3 text-sm"
           onClick={() => {
-            let start = 0;
-            try {
-              start = Number(localStorage.getItem(sessionStartKey));
-            } catch {
-              /* Optional elapsed hint. */
-            }
             setReviewMinutes(
-              start
-                ? Math.max(1, Math.round((Date.now() - start) / 60000))
+              session.resumedWorkout
+                ? Math.max(1, Math.round(session.elapsedSeconds / 60))
                 : null,
             );
             setFinishReview(true);

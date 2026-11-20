@@ -87,6 +87,7 @@ export class AccountSync {
   }
   private active = true;
   private revision = 0;
+  private syncTimer?: ReturnType<typeof setTimeout>;
   private localQueue: Promise<void> = Promise.resolve();
   private reconciled = false;
   private pending = false;
@@ -236,7 +237,14 @@ export class AccountSync {
     };
     this.emit();
     void this.persist()
-      .then(() => this.sync())
+      .then(() => {
+        if (!this.active) return;
+        clearTimeout(this.syncTimer);
+        this.syncTimer = setTimeout(() => {
+          this.syncTimer = undefined;
+          void this.sync();
+        }, 450);
+      })
       .catch(() => undefined);
   }
 
@@ -272,6 +280,8 @@ export class AccountSync {
   }
 
   sync(): Promise<void> {
+    clearTimeout(this.syncTimer);
+    this.syncTimer = undefined;
     if (!this.active || this.status.conflicts?.length) return Promise.resolve();
     if (
       this.reconciled &&
@@ -535,6 +545,7 @@ export class AccountSync {
   }
   dispose() {
     if (!this.active) return;
+    clearTimeout(this.syncTimer);
     this.active = false;
     this.stopListening?.();
     this.dependencies.dispose?.();

@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   CloudCheck,
   HardDrive,
   LoaderCircle,
   Timer,
   Unplug,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { remainingRest, performanceTrend } from '@/lib/workout-experience';
@@ -47,76 +46,6 @@ export function GhostPerformance({
         {trend === 'up' ? '↗' : trend === 'down' ? '↘' : '·'} {reference}
       </span>
     </span>
-  );
-}
-
-export function UndoNotice({
-  message,
-  onUndo,
-  onDismiss,
-}: {
-  message: string;
-  onUndo: () => void;
-  onDismiss: () => void;
-}) {
-  const [closing, setClosing] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const remaining = useRef(5000);
-  const paused = hovered || focused;
-  useEffect(() => {
-    if (paused || closing) return;
-    const start = Date.now();
-    const timer = window.setTimeout(() => setClosing(true), remaining.current);
-    return () => {
-      window.clearTimeout(timer);
-      remaining.current = Math.max(0, remaining.current - (Date.now() - start));
-    };
-  }, [paused, closing]);
-  useEffect(() => {
-    if (!closing) return;
-    const timer = window.setTimeout(onDismiss, 180);
-    return () => window.clearTimeout(timer);
-  }, [closing, onDismiss]);
-  return (
-    <div
-      className="undo-notice"
-      data-closing={closing}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocusCapture={() => setFocused(true)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget))
-          setFocused(false);
-      }}
-    >
-      <span
-        aria-hidden="true"
-        className="undo-progress"
-        style={{ animationPlayState: paused ? 'paused' : 'running' }}
-      />
-      <output className="relative min-w-0 flex-1 text-sm">{message}</output>
-      <Button
-        disabled={closing}
-        onClick={() => {
-          setClosing(true);
-          onUndo();
-        }}
-        variant="ghost"
-        className="relative min-h-11 shrink-0 rounded-xl font-bold"
-      >
-        Deshacer
-      </Button>
-      <button
-        disabled={closing}
-        type="button"
-        aria-label="Cerrar aviso"
-        className="relative grid size-11 shrink-0 place-items-center rounded-xl"
-        onClick={() => setClosing(true)}
-      >
-        <X className="size-4" />
-      </button>
-    </div>
   );
 }
 
