@@ -604,3 +604,13 @@ summary[data-feedback-pressed="true"] {
 .profile-achievement-progress::-webkit-progress-bar { background: var(--muted); border-radius: 1rem; }
 .profile-achievement-progress::-webkit-progress-value { background: var(--primary); border-radius: 1rem; }
 .profile-achievement-progress::-moz-progress-bar { background: var(--primary); border-radius: 1rem; }
+
+/* App controls behave like native controls; editable fields retain text tools. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+input, textarea, [contenteditable="true"], [contenteditable="plaintext-only"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
