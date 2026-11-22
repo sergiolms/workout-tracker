@@ -54,6 +54,8 @@ export type WorkoutLog = {
   notes: string;
 };
 export type ActiveWorkout = {
+  pausedAt?: string;
+  pausedMs?: number;
   exercises?: Exercise[];
   plannedSets?: number;
   id: string;

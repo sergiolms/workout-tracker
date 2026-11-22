@@ -1,4 +1,7 @@
 'use client';
+import { currentWorkout, toggleWorkoutPause } from '@/lib/workout-clock';
+import { WorkoutLauncher } from '@/components/workout-launcher';
+import { WorkoutNavigationButton } from '@/components/workout-navigation-button';
 import { HeartPulse } from 'lucide-react';
 import { navItems, type Tab } from '@/components/navigation-items';
 import { HistoryProvider } from '@/components/history-source';
@@ -80,12 +83,14 @@ export default function HomePage() {
     localImport,
     dismissLocalImport,
   } = useWorkoutAccount();
+  const runningWorkout = currentWorkout(state);
+  const [requestFinish, setRequestFinish] = useState(0);
   const [tab, setTab] = useState<Tab>('today');
   const systemDark = useSystemTheme();
   const isDark =
     state.theme === 'dark' || (state.theme === 'system' && systemDark);
   useThemeColor(isDark);
-  const [preferredRoutine, setPreferredRoutine] = useState('');
+  const [, setPreferredRoutine] = useState('');
   const [trainingNotice, setTrainingNotice] = useState('');
   const updateAvailable = useAppUpdates();
   const [restDeadline, setRestDeadline] = useState<number | null>(null);
@@ -109,7 +114,10 @@ export default function HomePage() {
   const selectView = useCallback(
     (id: Tab, direction: -1 | 0 | 1 = 0) => {
       if (id !== tab) {
-        if (tab === 'today') setPreferredRoutine('');
+        if (tab === 'today') {
+          setPreferredRoutine('');
+          setRequestFinish(0);
+        }
         setViewDirection(direction);
         setTab(id);
       }
@@ -126,6 +134,11 @@ export default function HomePage() {
   useInteractionFeedback(state.haptics !== false);
 
   const startSession = (week: number, routine: string) => {
+    if (runningWorkout) {
+      setTab('today');
+      return;
+    }
+    setRequestFinish(0);
     setPreferredRoutine(routine);
     setTrainingNotice('');
     updateState((current) =>
@@ -201,19 +214,29 @@ export default function HomePage() {
 
   const content =
     tab === 'today' ? (
-      <TodayView
-        accountId={accountId}
-        editable={persistenceStatus.canEdit}
-        key={`${state.week}:${preferredRoutine}`}
-        state={state}
-        updateState={updateState}
-        onOpenSessions={() => setTab('plan')}
-        preferredRoutine={preferredRoutine}
-        onFinish={finishSession}
-        notice={trainingNotice}
-        onStartRest={startRest}
-        onStopRest={stopRest}
-      />
+      runningWorkout ? (
+        <TodayView
+          accountId={accountId}
+          editable={persistenceStatus.canEdit}
+          key={runningWorkout.id}
+          state={{ ...state, week: runningWorkout.week }}
+          requestFinish={requestFinish}
+          updateState={updateState}
+          onOpenSessions={() => setTab('plan')}
+          preferredRoutine={runningWorkout.routine}
+          onFinish={finishSession}
+          notice={trainingNotice}
+          onStartRest={startRest}
+          onStopRest={stopRest}
+        />
+      ) : (
+        <WorkoutLauncher
+          state={state}
+          onStart={startSession}
+          onPlan={() => setTab('plan')}
+          notice={trainingNotice}
+        />
+      )
     ) : tab === 'plan' ? (
       <PlanView
         state={state}
@@ -468,6 +491,32 @@ export default function HomePage() {
                 <div className="bottom-nav">
                   <div className="mx-auto max-w-[680px]">
                     <LiquidNavigation
+                      featuredControl={
+                        <WorkoutNavigationButton
+                          key={runningWorkout?.id ?? 'idle'}
+                          workout={runningWorkout}
+                          name={
+                            state.sessions.find(
+                              (s) => s.id === runningWorkout?.routine,
+                            )?.name ?? 'Sesión actual'
+                          }
+                          active={tab === 'today'}
+                          editable={persistenceStatus.canEdit}
+                          onSelect={() => selectView('today')}
+                          onPause={() => {
+                            stopRest();
+                            if (runningWorkout)
+                              updateState((current) =>
+                                toggleWorkoutPause(current, runningWorkout.id),
+                              );
+                          }}
+                          onStop={() => {
+                            setTab('today');
+                            setRequestFinish((value) => value + 1);
+                            scrollContentToTop();
+                          }}
+                        />
+                      }
                       items={navItems}
                       active={tab}
                       onSelect={selectView}

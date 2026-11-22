@@ -1,4 +1,5 @@
 'use client';
+import { toggleWorkoutPause } from '@/lib/workout-clock';
 import { useState } from 'react';
 import { useTodaySession } from '@/hooks/use-today-session';
 import { TodayExerciseCard } from '@/components/today/exercise-card';
@@ -198,7 +199,7 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
         <div>
           <div className="mb-2 flex items-center gap-2">
             <div className="no-scrollbar flex min-w-0 gap-1 overflow-x-auto">
-              {routineIds.map((id) => (
+              {(session.resumedWorkout ? [routineId] : routineIds).map((id) => (
                 <button
                   key={id}
                   aria-pressed={routineId === id}
@@ -244,7 +245,11 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
         className="surface rounded-2xl border border-border p-4"
         aria-label="Sesión actual"
       >
-        <p className="eyebrow">Sesión actual</p>
+        <p className="eyebrow">
+          {session.resumedWorkout?.pausedAt
+            ? 'Sesión en pausa'
+            : 'Sesión actual'}
+        </p>
         <h2 className="mt-1 text-lg font-bold">
           {sessionById.get(routineId)?.name ?? routineId}
         </h2>
@@ -260,7 +265,18 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
                 .padStart(2, '0')}
               :{(session.elapsedSeconds % 60).toString().padStart(2, '0')}
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  session.onStopRest();
+                  updateState((current) =>
+                    toggleWorkoutPause(current, session.workoutId),
+                  );
+                }}
+              >
+                {session.resumedWorkout?.pausedAt ? 'Reanudar' : 'Pausar'}
+              </Button>
               <Button
                 onClick={() => {
                   setReviewMinutes(
@@ -343,7 +359,12 @@ export function TodayView(props: Parameters<typeof useTodaySession>[0]) {
         </Button>
       </section>
 
-      <TodayExerciseCard session={session} />
+      <fieldset
+        disabled={Boolean(session.resumedWorkout?.pausedAt)}
+        className="min-w-0 disabled:opacity-60"
+      >
+        <TodayExerciseCard session={session} />
+      </fieldset>
 
       {savedWorkout ? (
         <output className="motion-notice block text-center text-xs text-muted-foreground">

@@ -1,5 +1,7 @@
 'use client';
 import { buildWorkoutReview, exerciseLogDraft } from '@/lib/today-session';
+import { workoutSeconds } from '@/lib/workout-clock';
+import { useWorkoutClock } from '@/hooks/use-workout-clock';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getExerciseDescription,
@@ -58,7 +60,9 @@ export function useTodaySession({
   notice,
   onStartRest,
   onStopRest,
+  requestFinish = 0,
 }: {
+  requestFinish?: number;
   accountId: string;
   onStartRest: (seconds: number) => void;
   onStopRest: () => void;
@@ -245,19 +249,7 @@ export function useTodaySession({
       }),
     );
 
-  const startedAt = resumedWorkout?.startedAt;
-  const [clock, setClock] = useState(Date.now);
-  useEffect(() => {
-    if (!startedAt) return;
-    const timer = window.setInterval(() => setClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [startedAt]);
-  const elapsedSeconds = resumedWorkout
-    ? Math.max(
-        0,
-        Math.floor((clock - Date.parse(resumedWorkout.startedAt)) / 1000),
-      )
-    : 0;
+  const elapsedSeconds = useWorkoutClock(resumedWorkout);
   const cancelSession = () => {
     if (!editable) return;
     updateState((current) => cancelWorkout(current, workoutId));
@@ -266,6 +258,20 @@ export function useTodaySession({
     setExerciseIndex(0);
   };
   const [reviewMinutes, setReviewMinutes] = useState<number | null>(null);
+  const handledFinish = useRef(0);
+  useEffect(() => {
+    if (!requestFinish || handledFinish.current === requestFinish) return;
+    const timer = window.setTimeout(() => {
+      handledFinish.current = requestFinish;
+      setFinishReview(true);
+      setReviewMinutes(
+        resumedWorkout
+          ? Math.max(1, Math.round(workoutSeconds(resumedWorkout) / 60))
+          : null,
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [requestFinish, resumedWorkout]);
   const exerciseCard = useRef<HTMLElement>(null);
   const toggleSets = (next: boolean[], rest: boolean) => {
     ensureStarted();
